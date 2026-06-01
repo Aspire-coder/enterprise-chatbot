@@ -1,0 +1,24 @@
+[
+  {
+    "sku": "526",
+    "name": "START YOUR JOURNEY PACK",
+    "short_desc": "Sign up with a Start Your Journey Pack and get your business started! Complete with products and tools to help you share them, the SYJP will get you one step closer to achieving your goals.",
+    "price": 181.2,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/start_your_journey_pack_pd_zoomedimage_1000_X_1000_1759224921400.jpg",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/fbo-join-packs/526-START-YOUR-JOURNEY-PACK",
+    "category": "fbo-join-packs",
+    "availability": ""
+  },
+  {
+    "sku": "527",
+    "name": "SKINCARE STARTER PACK",
+    "short_desc": "This Skincare Starter Pack has been designed to help you achieve the ultimate skin from within, and give you a chance to sample a variety or our award-winning product ranges.",
+    "price": 175.22,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/skincare_starter_pack_pd_zoomedimage_1000_X_1000_1756730280209.jpg",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/fbo-join-packs/527-SKINCARE-STARTER-PACK",
+    "category": "fbo-join-packs",
+    "availability": ""
+  }
+]

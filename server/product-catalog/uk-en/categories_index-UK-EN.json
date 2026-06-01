@@ -1,0 +1,70 @@
+{
+  "drinks": {
+    "file": "drinks-UK-EN.json",
+    "count": 69
+  },
+  "uncategorised": {
+    "file": "uncategorised-UK-EN.json",
+    "count": 192
+  },
+  "combo-paks": {
+    "file": "combo-paks-UK-EN.json",
+    "count": 13
+  },
+  "literature": {
+    "file": "literature-UK-EN.json",
+    "count": 39
+  },
+  "nutritional": {
+    "file": "nutritional-UK-EN.json",
+    "count": 38
+  },
+  "vegan-products": {
+    "file": "vegan-products-UK-EN.json",
+    "count": 64
+  },
+  "monthly-wellness-focus": {
+    "file": "monthly-wellness-focus-UK-EN.json",
+    "count": 24
+  },
+  "skin-care": {
+    "file": "skin-care-UK-EN.json",
+    "count": 57
+  },
+  "weight-management": {
+    "file": "weight-management-UK-EN.json",
+    "count": 43
+  },
+  "personal-care": {
+    "file": "personal-care-UK-EN.json",
+    "count": 24
+  },
+  "accessories": {
+    "file": "accessories-UK-EN.json",
+    "count": 42
+  },
+  "new-products": {
+    "file": "new-products-UK-EN.json",
+    "count": 19
+  },
+  "starter-paks": {
+    "file": "starter-paks-UK-EN.json",
+    "count": 6
+  },
+  "bee-products": {
+    "file": "bee-products-UK-EN.json",
+    "count": 5
+  },
+  "promotion": {
+    "file": "promotion-UK-EN.json",
+    "count": 5
+  },
+  "essential-oils": {
+    "file": "essential-oils-UK-EN.json",
+    "count": 1
+  },
+  "fbo-join-packs": {
+    "file": "fbo-join-packs-UK-EN.json",
+    "count": 2
+  }
+}

@@ -1,0 +1,68 @@
+[
+  {
+    "sku": "456",
+    "name": "VITAL5 PACK",
+    "short_desc": "Vital5 incorporates Forever Living’s cornerstone product, Forever Aloe Vera Gel, with four synergistic supplements.",
+    "price": 183.19,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/vital5_pack_pd_zoomedimage_1000_X_1000_1718306863846.jpg",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/starter-paks/456-VITAL5-PACK",
+    "category": "starter-paks",
+    "availability": ""
+  },
+  {
+    "sku": "C9J",
+    "name": "C9",
+    "short_desc": "Jumpstart your journey to a slimmer, healthier you with Forever’s CLEAN 9 program. This easy-to-follow nine-day nutritional reset program comes with all the tools you need to reset and get you started on your fitness journey.",
+    "price": NaN,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/c9_pd_zoomedimage_1000_X_1000_1666018763742.jpg",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/starter-paks/C9J-C9",
+    "category": "starter-paks",
+    "availability": ""
+  },
+  {
+    "sku": "609",
+    "name": "SONYA DAILY SKINCARE KIT",
+    "short_desc": "**This product has been discontinued and is available only until the remaining stock is depleted — no further units will be produced.**",
+    "price": 81.49,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/sonya_daily_skincare_kit_pd_zoomedimage_1000_X_1000_1587377126199.jpg,https://cdn.foreverliving.com/https://player.vimeo.com/video/299393427",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/starter-paks/609-SONYA-DAILY-SKINCARE-KIT",
+    "category": "starter-paks",
+    "availability": ""
+  },
+  {
+    "sku": "526",
+    "name": "START YOUR JOURNEY PACK",
+    "short_desc": "Sign up with a Start Your Journey Pack and get your business started! Complete with products and tools to help you share them, the SYJP will get you one step closer to achieving your goals.",
+    "price": 181.2,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/start_your_journey_pack_pd_zoomedimage_1000_X_1000_1759224921400.jpg",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/starter-paks/526-START-YOUR-JOURNEY-PACK",
+    "category": "starter-paks",
+    "availability": ""
+  },
+  {
+    "sku": "527V",
+    "name": "SKINCARE STARTER PACK",
+    "short_desc": "This Skincare Starter Pack has been designed to help you achieve the ultimate skin from within, and give you a chance to sample a variety or our award-winning product ranges.",
+    "price": NaN,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/skincare_starter_pack_pd_zoomedimage_1000_X_1000_1756730261098.jpg",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/starter-paks/skincare-starter-pack",
+    "category": "starter-paks",
+    "availability": ""
+  },
+  {
+    "sku": "527",
+    "name": "SKINCARE STARTER PACK",
+    "short_desc": "This Skincare Starter Pack has been designed to help you achieve the ultimate skin from within, and give you a chance to sample a variety or our award-winning product ranges.",
+    "price": 175.22,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/skincare_starter_pack_pd_zoomedimage_1000_X_1000_1756730280209.jpg",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/starter-paks/527-SKINCARE-STARTER-PACK",
+    "category": "starter-paks",
+    "availability": ""
+  }
+]

@@ -1,0 +1,309 @@
+Vera Enterprise Chatbot - Capabilities and Implementation Summary
+================================================================
+
+Project folder
+--------------
+C:\Users\KRISH\enterprise-chatbot
+
+Main active files
+-----------------
+- server/index.js
+- src/App.jsx
+- src/countryLanguageOptions.js
+- server/product-catalog/uk-en/*.json
+- package.json
+- .env.example
+- DEV_HANDOFF_NOTES.md
+
+What the bot can do
+-------------------
+
+1. Provide a floating enterprise chat widget
+- The frontend renders a floating "Ask Vera" chat button and expandable chat panel.
+- The UI supports assistant/user message bubbles, loading states, source display, product cards, image cards, suggested follow-up prompts, region selection, consent flow, and escalation.
+- Implemented in src/App.jsx using React, Framer Motion, Tailwind-style classes, and lucide-react icons.
+
+2. Detect and confirm the user's country and language
+- The frontend detects browser locale and maps common country codes to supported market names.
+- The user can confirm or change country/market and language before using the bot.
+- The list of country/language options is stored in src/countryLanguageOptions.js.
+- Country selection controls which languages are available.
+- Belgium supports Dutch, English, and French.
+- Germany supports English and German.
+- United Kingdom supports English.
+- The selected country and language are sent to the backend with each chat request.
+
+3. Show an AI consent / disclaimer step
+- The chat flow shows a consent message before the first real question is submitted.
+- It explains that Vera is generative AI and not a human, doctor, pharmacist, financial advisor, or legal advisor.
+- The user must accept before the pending question is submitted.
+- This is implemented in src/App.jsx through createConsentMessage, startConsentFlow, and handleConsentAgree.
+
+4. Answer market-specific policy and business questions
+- The backend uses Amazon Bedrock RetrieveAndGenerate against configured Knowledge Bases.
+- Current global Knowledge Base ID: YIKEZ84KMX.
+- UK, Germany, and Belgium are routed to the global Knowledge Base.
+- Market metadata filters are built for supported countries where appropriate.
+- Policy questions intentionally bypass strict metadata filters because demo testing showed strict filtering blocked valid PDF retrieval in some UK/global cases.
+- Implemented through getMarketKnowledgeBaseId, buildMarketScopeFilter, buildRetrievalFilter, buildBedrockQuery, sendKnowledgeBaseRequest, and getKnowledgeBaseResult in server/index.js.
+
+5. Answer in the user's question language
+- The backend detects the response language from the user's message, falling back to the selected UI language.
+- Supported detection includes Japanese, German, French, Spanish, and default/selected English or other selected language.
+- The Bedrock prompt instructs Vera to answer in the required response language and preserve company/product/legal terms.
+- Implemented through detectResponseLanguage and veraPromptTemplate in server/index.js.
+
+6. Preserve approved terminology and avoid unsafe claims
+- Vera is instructed to use only retrieved Knowledge Base results.
+- It must not invent products, prices, benefits, documents, testimonials, URLs, emails, or contact details.
+- It must not make disease treatment/cure/prevention/diagnosis claims.
+- It directs pregnancy, children, diabetes, medication, dosage, drug interaction, or emergency questions to appropriate medical professionals or emergency services.
+- For income questions, Vera must say income varies and refer to IDS when available.
+- Implemented in veraPromptTemplate in server/index.js.
+
+7. Handle product questions with product cards
+- Product requests are detected with product intent patterns covering English, German, Dutch, Spanish, French, and Japanese terms.
+- Product cards can include name, price, category, image, description, approved benefit, rating, product detail URL, buy URL, and disclaimer.
+- The frontend renders product cards in a carousel with image area, price badge, category, "Why this?", read more/show less, product details link, Buy Now, and cart icon.
+- Product cards are capped at 10.
+- Implemented in server/index.js and rendered by ProductCarousel in src/App.jsx.
+
+8. Use the UK local product catalog
+- UK product-card answers can be generated directly from local JSON files in server/product-catalog/uk-en.
+- This avoids a Bedrock call for many UK product recommendation questions.
+- The catalog is loaded at startup by loadUkProductCatalog.
+- Products are normalized into a common card shape by toProductCard.
+- Product matching and ranking are handled by getCatalogProductCards and scoreCatalogProduct.
+
+9. Use the Belgium S3 product catalog
+- Belgium product-card answers can be generated directly from the S3 JSON catalog:
+  s3://global-chatbot-kb/Foreverliving-NL-BE/Products-NL-BE/products-nl-be.json
+- The URI is configured by BELGIUM_PRODUCT_CATALOG_S3_URI.
+- The backend loads and caches the S3 JSON after the first request.
+- The loader supports JSON arrays, objects containing products/items/data/cards/product_cards arrays, and object maps keyed by product ID.
+- The normalizer accepts common fields such as product_name, name, title, product_url, buy_url, url, image_url, s3_image_uri, price_eur, display_price, description, approved_benefit, category, and categories.
+- Implemented by readS3Text, normalizeCatalogJson, loadBelgiumProductCatalog, getProductCatalogForCountry, and toProductCard.
+
+10. Provide Germany product-card fallback behavior
+- Germany product questions can retrieve from Bedrock citations and source URI names.
+- A small Germany fallback map exists for known hair-care products such as Aloe-Jojoba Shampoo, Aloe-Jojoba Conditioner, and Nourishing Hair Oil.
+- This should eventually be replaced by a full Germany JSON product catalog for consistency with UK and Belgium.
+- Implemented by knownGermanyProductCards, extractProductNameFromSourceUri, and getProductCardsFromSourceUris.
+
+11. Filter product cards by requested category
+- Category-specific requests apply a hard eligibility filter before card scoring.
+- Supported category filters include hair care, skin care, bee products, drinks, nutritional/supplements, and weight management.
+- Hair-care requests are especially strict: product names or explicit categories must contain hair/shampoo/conditioner/jojoba-style terms.
+- This prevents non-hair personal-care items such as Sample Aloe Liquid Soap from showing for hair-care questions.
+- Implemented by requestedProductCategoryRules, getRequestedProductCategoryRule, productMatchesRequestedCategory, and getCatalogProductCards.
+
+12. Prevent product cards on policy/bonus questions
+- Policy, bonus, compensation, distributor, sponsor, manager, compliance, legal, GDPR, return, refund, and similar questions are classified as policy.
+- Policy questions cannot generate product cards, even if Bedrock citations contain product-like metadata.
+- This fixed cases where "Chairman's Bonus" was misread as a hair query because "chairman's" contains "hair".
+- Product intent now uses word boundaries to avoid matching product terms inside unrelated words.
+- Implemented by policyQuestionPattern, getQuestionContentType, isProductRequest, shouldUseLocalCatalogOnly, and ensureProductCards.
+
+13. Add retrieval hints for fragile policy questions
+- Query expansion / retrieval hints were added for:
+  - Assistant Manager / Manager / First Steps to Manager
+  - Do's and Don'ts / Forever Experience guidance
+  - Chairman's Bonus, Gem Bonus, bonus misspellings such as "bonsu", commission, compensation, income, and IDS
+- These hints help Bedrock retrieve likely source documents when the user phrase does not exactly match the PDF title.
+- Implemented by getRetrievalHints and buildBedrockQuery.
+
+14. Extract product cards from multiple sources
+- The backend can create product cards from:
+  - local UK catalog JSON
+  - Belgium S3 catalog JSON
+  - product card JSON embedded in model output
+  - METADATA / END_METADATA blocks
+  - citation metadata
+  - source URI product names
+  - bold product names in the generated answer text
+- This makes cards resilient when Knowledge Base metadata is incomplete.
+- Implemented by extractProductCards, getProductCardsFromInlineMetadata, getProductCardsFromCitations, getProductCardsFromSourceUris, extractProductCardsFromAnswerText, ensureProductCards, and rememberProductCards.
+
+15. Render related image cards
+- The backend can create visual/image cards from S3 image URIs in citation metadata or from deterministic Belgium policy image rules.
+- Image cards are shown separately from product cards in the frontend.
+- The frontend displays up to 3 image cards.
+- Implemented by getImageCardsFromCitations, getPolicyImageCardsForMarket, getImageCardsForResponse, and ImageCards.
+
+16. Proxy S3 images through the backend
+- The backend exposes:
+  GET /api/assets/s3-image?uri=s3://...
+- This endpoint reads the S3 object and streams it back with the correct image content type.
+- Product and policy images can therefore be displayed in the browser without exposing direct S3 access patterns to the frontend.
+- Implemented with S3Client and GetObjectCommand in server/index.js.
+
+17. Show citations and source references
+- Bedrock citations are formatted into source chips in the chat UI.
+- If specific citations exist, the frontend displays them under "Sources".
+- If no citations exist for a normal assistant answer, it displays a fallback source label based on the selected country.
+- Implemented by formatCitations in server/index.js and message rendering logic in src/App.jsx.
+
+18. Provide suggested follow-up prompts
+- The frontend suggests starter and contextual prompts.
+- Categories include product, distributor, returns, compensation, and wellness.
+- Suggestions are based on recent user and assistant text.
+- Implemented by starterTopics, contextualTopics, getSuggestedTopics, asStarterCards, and asContextCards in src/App.jsx.
+
+19. Support manual escalation / handoff
+- The user can escalate a conversation to customer care.
+- The frontend sends the latest question, selected country, selected language, reason, and recent transcript to the backend.
+- The backend writes a handoff event to server/logs/handoff-events.jsonl.
+- A chat insight event is also written with responseSource "manual-handoff".
+- Implemented by handleEscalate in src/App.jsx and POST /api/escalations in server/index.js.
+
+20. Automatically create handoff events for failures
+- If no Knowledge Base is configured for a selected market, the backend returns a localized unavailable message and creates a handoff event.
+- If Bedrock returns an unavailable answer, the backend creates a handoff event with reason "bot-unavailable-answer".
+- If the server catches an error, it creates a handoff event with reason "server-error".
+- Implemented in POST /api/chat in server/index.js.
+
+21. Log chat insights for monitoring
+- Each chat request writes a JSONL event with question, normalized question, selected country, selected language, response language, response source, outcome, product card count, citation count, and duration.
+- Sensitive email/phone-like strings are redacted before logging.
+- Implemented by writeChatInsightEvent, redactQuestionForLog, normalizeQuestionForInsights, readChatInsightEvents, and summarizeChatInsightEvents.
+
+22. Provide admin monitoring dashboard
+- The backend exposes:
+  GET /api/admin/chat-insights
+  GET /api/admin/chat-insights?format=json
+- The dashboard shows handoff queue, repeated questions, recent failed/unavailable responses, and breakdowns by country, language, and source.
+- Access is allowed from localhost or by setting CHAT_INSIGHTS_TOKEN and sending it as the x-admin-token header.
+- Implemented by renderSupportAdminDashboard, canReadChatInsights, summarizeChatInsightEvents, summarizeHandoffEvents, and GET /api/admin/chat-insights.
+
+23. Provide last Bedrock debug endpoint
+- The backend exposes:
+  GET /api/admin/last-bedrock-debug
+- It returns the last Bedrock response summary including selected country/language, response source, product-card debug counts, image cards, answer preview, and retrieved reference previews.
+- Access is protected the same way as chat insights.
+- Implemented by lastBedrockDebug and GET /api/admin/last-bedrock-debug.
+
+24. Reduce unnecessary Bedrock usage
+- UK and Belgium product catalog answers can be served from JSON catalogs without calling Bedrock.
+- Bedrock query text was shortened to reduce repeated prompt/input tokens.
+- Product-card debug logging is disabled unless DEBUG_PRODUCT_CARDS=true.
+- Product questions use more retrieval results than general questions, while policy questions use additional retrieval depth for better document recall.
+
+25. Support local development commands
+- Backend:
+  cd C:\Users\KRISH\enterprise-chatbot
+  npm run server
+- Frontend:
+  cd C:\Users\KRISH\enterprise-chatbot
+  npm run dev
+- Validation:
+  npm run lint
+  npm run build
+  node --check server/index.js
+
+Backend API endpoints
+---------------------
+
+GET /api/health
+- Returns { ok: true }.
+- Used as a basic backend health check.
+
+POST /api/chat
+- Main chat endpoint.
+- Request body includes message, selectedCountry, and selectedLanguage.
+- Returns answer, productCards, imageCards, citations, and debug counts.
+- Routes product questions to local/S3 catalog where possible.
+- Routes policy/general questions to Bedrock Knowledge Base.
+
+POST /api/escalations
+- Creates a manual handoff event.
+- Request body includes question, selectedCountry, selectedLanguage, reason, and transcript.
+- Returns ok, handoffId, and a confirmation message.
+
+GET /api/assets/s3-image?uri=s3://...
+- Proxies an S3 image through the backend.
+- Used for product and policy images stored in S3.
+
+GET /api/admin/chat-insights
+- Renders the admin monitoring dashboard as HTML.
+- Requires localhost access or CHAT_INSIGHTS_TOKEN.
+
+GET /api/admin/chat-insights?format=json
+- Returns the admin monitoring data as JSON.
+- Requires localhost access or CHAT_INSIGHTS_TOKEN.
+
+GET /api/admin/last-bedrock-debug
+- Returns the latest Bedrock debug snapshot.
+- Requires localhost access or CHAT_INSIGHTS_TOKEN.
+
+Important environment variables
+-------------------------------
+
+AWS_REGION
+- AWS region for Bedrock and S3 clients.
+
+PORT
+- Express backend port. Defaults to 3001.
+
+FRONTEND_ORIGIN
+- CORS origin for the frontend. Defaults to http://localhost:5173.
+
+BEDROCK_MODEL_ARN
+- Model ARN used by Bedrock RetrieveAndGenerate.
+
+BEDROCK_GLOBAL_KNOWLEDGE_BASE_ID
+- Global Knowledge Base ID. Current value is YIKEZ84KMX.
+
+BEDROCK_GLOBAL_KNOWLEDGE_BASE_MARKETS
+- Comma-separated markets that use the global Knowledge Base.
+
+BEDROCK_KNOWLEDGE_BASE_ID_UK
+BEDROCK_KNOWLEDGE_BASE_ID_GERMANY
+BEDROCK_KNOWLEDGE_BASE_ID_BELGIUM
+- Optional market-specific Knowledge Base overrides.
+
+BEDROCK_MARKET_METADATA_BELGIUM
+- Belgium metadata market code. Current value is BEL.
+
+BELGIUM_PRODUCT_CATALOG_S3_URI
+- S3 URI for the Belgium product catalog JSON.
+
+CHAT_INSIGHTS_TOKEN
+- Optional admin token for monitoring endpoints.
+
+DEBUG_PRODUCT_CARDS
+- Optional. Set to true to print product-card debug information in backend logs.
+
+What was specifically added or changed during this build
+--------------------------------------------------------
+
+- Added country/language selection and market-aware request payloads.
+- Added response-language behavior so Vera answers in the user's language while preserving company/product/legal terms.
+- Added global Knowledge Base routing for UK, Germany, and Belgium.
+- Added market metadata filter support and relaxed policy retrieval for demo stability.
+- Added query expansion for Assistant Manager, First Steps to Manager, Do's and Don'ts, Gem Bonus, Chairman's Bonus, and bonus misspellings.
+- Added UK local product catalog support and product card rendering.
+- Added Belgium S3 product catalog support.
+- Added Germany source URI product-card fallback.
+- Added S3 image proxy endpoint.
+- Added Belgium policy image mapping for Assistant Manager, Assistant Supervisor, Supervisor, Manager, and first five key people.
+- Added product card category filtering to prevent unrelated products appearing in category-specific requests.
+- Added policy/bonus protection so product cards do not show for compensation or policy questions.
+- Added chat insight logs, handoff logs, admin dashboard, and last Bedrock debug endpoint.
+- Added manual escalation / handoff support.
+- Added token optimization by shortening the Bedrock per-request query wrapper.
+- Added DEV_HANDOFF_NOTES.md and this capabilities summary file.
+- Updated lint configuration so backup files do not affect active-code validation.
+
+Current known limitations / dev team follow-ups
+-----------------------------------------------
+
+- server/index.js is large and should be split into modules.
+- Germany product cards should ideally move to a full JSON catalog like UK and Belgium.
+- Policy metadata filtering is intentionally relaxed for demo stability; production should revisit metadata consistency in S3/Bedrock.
+- Frontend API URLs are still hardcoded to localhost in src/App.jsx and should be moved to a VITE_API_BASE_URL environment variable before AWS deployment.
+- Some visible frontend text contains mojibake from earlier encoding issues and should be cleaned before production polish.
+- The placeholder legal document links in src/App.jsx should be replaced with real production URLs.
+- Logs are local JSONL files; production should move monitoring/handoff storage to CloudWatch, S3, DynamoDB, or another durable store.
+- Admin endpoints should always use CHAT_INSIGHTS_TOKEN or stronger auth in shared environments.
+- Automated tests should be added for intent detection, policy/product separation, card category filtering, Belgium catalog normalization, S3 image URL handling, and market routing.
+

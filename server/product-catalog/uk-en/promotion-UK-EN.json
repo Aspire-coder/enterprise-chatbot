@@ -1,0 +1,57 @@
+[
+  {
+    "sku": "1327",
+    "name": "ALOE BAR BUNDLE",
+    "short_desc": "",
+    "price": 83.33,
+    "currency": "GBP",
+    "image_url": "",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/promotion/1327-ALOE-BAR-BUNDLE",
+    "category": "promotion",
+    "availability": ""
+  },
+  {
+    "sku": "71736",
+    "name": "ALOE MANGO BTGOF",
+    "short_desc": "Buy two Forever Aloe Mango (1 Litre) and get one FREE. Offer ends 12th November!",
+    "price": 45.13,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/aloe_mango_btgof_pd_zoomedimage_1000_X_1000_1698919175089.jpg",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/promotion/71736-ALOE-MANGO-BTGOF",
+    "category": "promotion",
+    "availability": ""
+  },
+  {
+    "sku": "9939",
+    "name": "FOREVER BLUE JUTE BAG",
+    "short_desc": ".",
+    "price": 0.0,
+    "currency": "GBP",
+    "image_url": "",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/promotion/9939-FOREVER-BLUE-JUTE-BAG",
+    "category": "promotion",
+    "availability": ""
+  },
+  {
+    "sku": "70664",
+    "name": "FREE BIO CELLULOSE MASK",
+    "short_desc": "",
+    "price": 0.0,
+    "currency": "GBP",
+    "image_url": "",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/promotion/70664-FREE-BIO-CELLULOSE-MASK",
+    "category": "promotion",
+    "availability": ""
+  },
+  {
+    "sku": "70554",
+    "name": "FREE INFINITE HYDRATING CLEANSER",
+    "short_desc": ".",
+    "price": 0.0,
+    "currency": "GBP",
+    "image_url": "https://cdn.foreverliving.com/content/products/images/free_infinite_hydrating_cleanser_pd_zoomedimage_1000_X_1000_1733743712644.jpg",
+    "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/promotion/70554-FREE-INFINITE-HYDRATING-CLEANS",
+    "category": "promotion",
+    "availability": ""
+  }
+]

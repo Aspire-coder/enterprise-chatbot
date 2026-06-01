@@ -1,0 +1,194 @@
+PROJECT: C:\Users\KRISH\enterprise-chatbot
+
+Goal:
+Build a Forever Living chatbot with:
+1. Country selector using all countries from CSV files.
+2. Language selector filtered by selected country.
+3. Same-language responses based on the user’s question language.
+4. Country selection controls the Knowledge Base / market scope.
+5. Product cards should be consistent, clickable, image-backed, and easy to buy from.
+
+Important files:
+- Frontend: C:\Users\KRISH\enterprise-chatbot\src\App.jsx
+- Country/language data: C:\Users\KRISH\enterprise-chatbot\src\countryLanguageOptions.js
+- Backend: C:\Users\KRISH\enterprise-chatbot\server\index.js
+- Product catalog source: C:\Users\KRISH\Downloads\FLP_GBR_Products_UK-EN
+- Product catalog target: C:\Users\KRISH\enterprise-chatbot\server\product-catalog\uk-en
+
+Changes done / intended:
+
+1. Country and language selector
+- Added src\countryLanguageOptions.js built from CSV files:
+  - forever_latin_america.csv
+  - forever_middle_east.csv
+  - forever_north_america.csv
+  - forever_pacific_rim.csv
+  - forever_carribean.csv
+  - forever_africa.csv
+  - forever_asia.csv
+  - forever_europe.csv
+- Each country maps to available languages.
+- Canada maps to English + French.
+- Ecuador was manually updated to include English + Spanish.
+- App.jsx country dropdown now uses all countries.
+- Language dropdown changes based on selected country.
+- Single-language values were normalized into arrays.
+
+2. Frontend sends selected market/language
+- App.jsx now sends this to backend:
+  {
+    message: question,
+    selectedCountry: selectedCountryLabel,
+    selectedLanguage: selectedLanguageLabel
+  }
+
+3. Country controls Knowledge Base
+- server/index.js now treats selected country as market scope.
+- United Kingdom uses:
+  BEDROCK_KNOWLEDGE_BASE_ID_UK || BEDROCK_KNOWLEDGE_BASE_ID
+- Other countries use env vars shaped like:
+  BEDROCK_KNOWLEDGE_BASE_ID_CANADA
+  BEDROCK_KNOWLEDGE_BASE_ID_SWITZERLAND
+  etc.
+- If no KB exists for a selected country, backend returns a no-KB-configured message before calling Bedrock.
+- Example expected behavior:
+  - UK selected + Japanese question = Japanese answer using UK KB only.
+  - Switzerland selected + no Switzerland KB = do not answer from UK KB.
+  - Canada selected + no Canada KB = no Canada KB configured message.
+
+4. Same-language response behavior
+- server/index.js detects response language from the user’s latest question.
+- Japanese, German, French, Spanish, English are handled.
+- Backend passes Required response language to Bedrock.
+- Bedrock prompt says:
+  - answer in Required response language
+  - do not ask user to switch to English
+  - preserve company/product terms
+- Company-specific terms should not be translated:
+  Vera, Forever Living, Forever Living Products, FLP, FBO, FPC, IDS, Knowledge Base, product names, document names, URLs, emails.
+
+5. Product cards and UX
+- Product answers should show:
+  - short 1-2 sentence answer first
+  - product cards immediately after
+  - longer explanation inside collapsible “Why these?”
+- ProductCarousel currently shows up to top 3 product cards first.
+- Cards should include:
+  - image
+  - product name
+  - category
+  - price
+  - Why this? description
+  - Buy Now link
+  - cart icon link
+  - View product details link
+- Buy Now and cart icon should open productUrl/product_url.
+
+6. Product catalog improvement
+- New product files were uploaded to:
+  C:\Users\KRISH\Downloads\FLP_GBR_Products_UK-EN
+- Example file:
+  bee-products-UK-EN.json
+- JSON shape:
+  [
+    {
+      "sku": "051",
+      "name": "ALOE PROPOLIS CREME",
+      "short_desc": "...",
+      "price": 15.78,
+      "currency": "GBP",
+      "image_url": "https://cdn.foreverliving.com/...",
+      "product_url": "https://foreverliving.com/shop/GBR/en-GB/products/...",
+      "category": "bee-products",
+      "availability": ""
+    }
+  ]
+- Backend should copy/load those JSON files into:
+  server/product-catalog/uk-en
+- Product cards should be built from local JSON catalog, not from Bedrock-generated raw JSON whenever possible.
+- The local catalog gives reliable:
+  - imageUrl from image_url
+  - buyUrl/url from product_url
+  - priceGbp from price
+  - description from short_desc
+  - categories from category
+
+7. Problems encountered
+- Bedrock sometimes returns raw product_cards JSON in the visible text.
+- Bedrock sometimes returns prose only, so no cards appear.
+- Earlier fallback only handled hair-care products and caused inconsistency.
+- Aloe/honey products sometimes showed text only.
+- Some fallback cards had no images because fallback data did not know image URLs.
+- Product card parser sometimes created fake cards from headings like “Core Skin Care:”.
+- Local product catalog fix was added to solve this.
+
+8. Startup issue after catalog patch
+When running npm run server, this error appeared:
+- Some JSON files contain invalid JSON with:
+  "price": NaN
+- Node JSON.parse fails on NaN.
+- Also productCatalogByName was created before normalizeProductName existed.
+
+Fix script created:
+C:\Users\KRISH\Documents\Codex\2026-05-14\files-mentioned-by-the-user-forever\fix-enterprise-chatbot-catalog-startup.ps1
+
+It does:
+- Moves productCatalogByName creation after normalizeProductName.
+- Sanitizes catalog JSON by replacing:
+  : NaN
+  with:
+  : null
+before JSON.parse.
+
+Run:
+powershell -ExecutionPolicy Bypass -File "C:\Users\KRISH\Documents\Codex\2026-05-14\files-mentioned-by-the-user-forever\fix-enterprise-chatbot-catalog-startup.ps1"
+
+Then:
+cd C:\Users\KRISH\enterprise-chatbot
+npm run server
+
+9. Scripts created in Codex workspace
+Folder:
+C:\Users\KRISH\Documents\Codex\2026-05-14\files-mentioned-by-the-user-forever
+
+Scripts:
+- apply-enterprise-chatbot-country-language.ps1
+- apply-enterprise-chatbot-language-response-policy.ps1
+- apply-enterprise-chatbot-german-language-fix.ps1
+- apply-enterprise-chatbot-market-scope-fix.ps1
+- apply-enterprise-chatbot-japanese-uk-fix.ps1
+- apply-enterprise-chatbot-response-language-lock.ps1
+- apply-enterprise-chatbot-japanese-product-cards-fix.ps1
+- apply-enterprise-chatbot-product-card-fallback.ps1
+- apply-enterprise-chatbot-product-card-cache.ps1
+- apply-enterprise-chatbot-best-approach.ps1
+- apply-enterprise-chatbot-product-ux.ps1
+- apply-enterprise-chatbot-generic-product-cards.ps1
+- apply-enterprise-chatbot-local-product-catalog.ps1
+- apply-enterprise-chatbot-product-catalog-ux-fix.ps1
+- fix-enterprise-chatbot-catalog-startup.ps1
+
+10. Environment variables
+Current .env has:
+AWS_REGION=us-east-1
+BEDROCK_KNOWLEDGE_BASE_ID=AW0X0LPRSN
+BEDROCK_MODEL_ARN=...
+FRONTEND_ORIGIN=http://localhost:5173
+PORT=3001
+
+Future market KB env vars:
+BEDROCK_KNOWLEDGE_BASE_ID_UK=...
+BEDROCK_KNOWLEDGE_BASE_ID_CANADA=...
+BEDROCK_KNOWLEDGE_BASE_ID_SWITZERLAND=...
+
+11. Important expected behavior
+- UK selected + Japanese question:
+  answer in Japanese, using UK KB only.
+- UK selected + German question:
+  answer in German, using UK KB only.
+- Switzerland selected with no Switzerland KB:
+  no answer from UK KB; return no configured KB message.
+- Canada selected with no Canada KB:
+  no Canada answer from UK KB; return no configured KB message.
+- Product category question:
+  show short answer, then top product cards with images/price/links from local product catalog, then details.
