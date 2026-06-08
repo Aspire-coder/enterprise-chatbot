@@ -8,13 +8,21 @@ import {
   decodeBasicHtmlEntities,
   detectResponseLanguage,
   getExactRetrievalTerms,
-  getProductCardsFromCitations,
-  getProductCardsFromInlineMetadata,
+  getMarketKnowledgeBaseId,
+  getRelaxedRetryFilters,
   isHealthSafetyQuestion,
   isIncomeOpportunityQuestion,
   isMedicalEmergencyQuestion,
   isUnavailableAnswer,
 } from "./index.js";
+
+const requestedMarketCountries = [
+  "Italy",
+  "Sweden",
+  "United Kingdom",
+  "Germany",
+  "Canada",
+];
 
 test("JSON API responses include UTF-8 content type", async () => {
   const server = app.listen(0);
@@ -67,10 +75,52 @@ test("medical safety detector covers emergency and broader health questions", ()
   assert.equal(isHealthSafetyQuestion("Is this safe with blood pressure medication?"), true);
   assert.equal(isHealthSafetyQuestion("I have kidney disease, can I use this product?"), true);
   assert.equal(isHealthSafetyQuestion("I have fever and a rash after taking this"), true);
+  assert.equal(isHealthSafetyQuestion("What products can I give to my child?"), true);
+  assert.equal(isHealthSafetyQuestion("Welche Produkte kann ich meinem Kind geben?"), true);
+});
+
+test("child product questions return safety guidance without product cards for every market", async () => {
+  const server = app.listen(0);
+  const markets = [
+    ["United Kingdom", "English", "What products can I give to my child?"],
+    ["Canada", "English", "What products can I give to my child?"],
+    ["Germany", "German", "Welche Produkte kann ich meinem Kind geben?"],
+    ["Italy", "Italian", "Quali prodotti posso dare a mio figlio?"],
+    ["Netherlands", "Dutch", "Welke producten kan ik aan mijn kind geven?"],
+  ];
+
+  try {
+    const { port } = server.address();
+
+    for (const [selectedCountry, selectedLanguage, message] of markets) {
+      const response = await fetch(`http://127.0.0.1:${port}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, selectedCountry, selectedLanguage }),
+      });
+      const payload = await response.json();
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(payload.productCards, []);
+      assert.doesNotMatch(payload.answer, /Forever Kids/i);
+      assert.match(payload.answer, /healthcare|professional|professionista|zorgverlener|medizinisches Fachpersonal/i);
+    }
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
 });
 
 test("income opportunity questions never stay as generic refusals", async () => {
   assert.equal(isIncomeOpportunityQuestion("if I join foreverliving can i become rich?"), true);
+  assert.equal(isIncomeOpportunityQuestion("How can I earn Leadership Bonus?"), false);
+  assert.equal(isIncomeOpportunityQuestion("How do I qualify for Chairman's Bonus?"), false);
+  assert.equal(isIncomeOpportunityQuestion("What are the compensation plan requirements?"), false);
+  assert.equal(isIncomeOpportunityQuestion("What bonuses can i received when i become an FBO?"), false);
+  assert.equal(isIncomeOpportunityQuestion("When are commissions paid?"), false);
+  assert.equal(isIncomeOpportunityQuestion("Can I earn money if I join Forever?"), true);
+  assert.equal(isIncomeOpportunityQuestion("Can I become rich as an FBO?"), true);
 
   const server = app.listen(0);
 
@@ -146,72 +196,42 @@ test("extracts exact article numbers and numeric product/program names", () => {
   );
 });
 
-test("preserves product names with numeric prefixes from validated metadata", () => {
-  const cards = getProductCardsFromCitations(
-    [
-      {
-        retrievedReferences: [
-          {
-            metadata: {
-              product_name: "13-Day-Fit-Program 4759",
-              sku: "4759",
-              content_type: "product",
-              price: "125.00",
-            },
-            content: {
-              text: "13-Day-Fit-Program 4759 contains DX4™ and C9™ products.",
-            },
-          },
-        ],
-      },
-    ],
-    "Germany",
-  );
-
-  assert.equal(cards.length, 1);
-  assert.equal(cards[0].name, "13-Day-Fit-Program 4759");
-});
-
-test("does not create product cards from plain text chunks without product metadata", () => {
-  const cards = getProductCardsFromCitations([
-    {
-      retrievedReferences: [
-        {
-          metadata: {
-            title: "Come qualificarsi:",
-            content_type: "document",
-          },
-          content: {
-            text: "500 Case Credits: accesso all'esperienza.",
-          },
-        },
-      ],
-    },
-  ]);
-
-  assert.deepEqual(cards, []);
-});
-
-test("inline metadata keeps numeric product titles intact", () => {
-  const cards = getProductCardsFromInlineMetadata(`
-METADATA
-product_name: 13-Day-Fit-Program 4759
-content_type: product
-sku: 4759
-price: 125.00
-END_METADATA
-`);
-
-  assert.equal(cards.length, 1);
-  assert.equal(cards[0].name, "13-Day-Fit-Program 4759");
-});
-
 test("Germany filters include DE and DEU aliases", () => {
   const filter = buildMarketOrGlobalScopeFilter("Germany");
   const serialized = JSON.stringify(filter);
 
   assert.match(serialized, /"DE"/);
   assert.match(serialized, /"DEU"/);
+});
+
+test("requested markets have explicit retrieval metadata filters", () => {
+  for (const country of requestedMarketCountries) {
+    const serialized = JSON.stringify(buildRetrievalFilter({ selectedCountry: country }));
+
+    assert.match(serialized, new RegExp(`"${country}"`));
+  }
+});
+
+test("requested markets can resolve configured knowledge base ids", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.BEDROCK_KNOWLEDGE_BASE_ID = "default-uk-kb";
+    process.env.BEDROCK_GLOBAL_KNOWLEDGE_BASE_ID = "global-kb";
+    process.env.BEDROCK_KNOWLEDGE_BASE_ID_UK = "uk-kb";
+    process.env.BEDROCK_KNOWLEDGE_BASE_ID_GERMANY = "germany-kb";
+    process.env.BEDROCK_KNOWLEDGE_BASE_ID_ITALY = "italy-kb";
+    process.env.BEDROCK_KNOWLEDGE_BASE_ID_SWEDEN = "sweden-kb";
+    process.env.BEDROCK_KNOWLEDGE_BASE_ID_CANADA = "canada-kb";
+
+    assert.equal(getMarketKnowledgeBaseId("United Kingdom"), "uk-kb");
+    assert.equal(getMarketKnowledgeBaseId("Germany"), "germany-kb");
+    assert.equal(getMarketKnowledgeBaseId("Italy"), "italy-kb");
+    assert.equal(getMarketKnowledgeBaseId("Sweden"), "sweden-kb");
+    assert.equal(getMarketKnowledgeBaseId("Canada"), "canada-kb");
+  } finally {
+    process.env = previousEnv;
+  }
 });
 
 test("normal Italy document questions search Italy before global fallback", () => {
@@ -226,9 +246,35 @@ test("normal Italy document questions search Italy before global fallback", () =
   assert.doesNotMatch(serialized, /"global"/);
 });
 
-test("Italian unavailable wording triggers unfiltered retry", () => {
+test("market document retries do not search unrelated country documents", () => {
+  const retrievalFilter = buildRetrievalFilter({
+    selectedCountry: "Canada",
+    message: "Are FBOs allowed to create AI-generated marketing content without company approval?",
+  });
+  const retryFilters = getRelaxedRetryFilters({
+    selectedCountry: "Canada",
+    message: "Are FBOs allowed to create AI-generated marketing content without company approval?",
+    retrievalFilter,
+  });
+  const serialized = JSON.stringify(retryFilters);
+
+  assert.equal(retryFilters.length, 1);
+  assert.notEqual(retryFilters[0], undefined);
+  assert.match(serialized, /"global"/);
+  assert.doesNotMatch(serialized, /"SE"/);
+  assert.doesNotMatch(serialized, /"NL"/);
+});
+
+test("Italian unavailable wording triggers relaxed retry", () => {
   const unavailable =
     "Mi dispiace, ma le informazioni che hai cercato non sono disponibili nei documenti approvati a cui ho accesso.";
+
+  assert.equal(isUnavailableAnswer(unavailable), true);
+});
+
+test("German unavailable wording triggers relaxed retry", () => {
+  const unavailable =
+    "Mir tut es leid, aber die Informationen zu Datenschutz und Zweck der Speicherung sind in den mir verfügbaren genehmigten Dokumenten nicht enthalten.";
 
   assert.equal(isUnavailableAnswer(unavailable), true);
 });

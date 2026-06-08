@@ -23,16 +23,24 @@ import { countryLanguageOptions } from "./countryLanguageOptions";
 
 const documentLinks = [
   {
-    label: "Privacy Notice (US)",
-    href: "#replace-with-privacy-notice-us-url",
+    label: "Privacy Notice",
+    href: "/documents/privacy-notice.docx",
+    download: "privacy-notice.docx",
+  },
+  {
+    label: "Privacy Notice (U.S. Addendum)",
+    href: "/documents/privacy-notice-us-addendum.docx",
+    download: "privacy-notice-us-addendum.docx",
   },
   {
     label: "Company Policy (USA)",
-    href: "#replace-with-company-policy-usa-url",
+    href: "/documents/company-policy-usa.docx",
+    download: "company-policy-usa.docx",
   },
   {
     label: "FLP Individual Arbitration and Class Action Waiver Agreement",
-    href: "#replace-with-arbitration-waiver-url",
+    href: "/documents/flp-arbitration-class-action-waiver.docx",
+    download: "flp-arbitration-class-action-waiver.docx",
   },
 ];
 
@@ -228,7 +236,7 @@ const getDetectedLocale = () => {
 
 const createWelcomeMessage = () => ({
   role: "assistant",
-  text: `Hello, I'm Vera, your Forever Living AI assistant.
+  text: `Hello, I'm ASK Vera, your Forever Living AI assistant.
 
 I can help with product information, distributor guidance, market-specific documents, and support topics based on the country you select.
 
@@ -248,35 +256,35 @@ I'm here to help with everything specific to your market. Would you like to cont
 const consentMessageByLanguage = {
   English: (country) => `Thank you for confirming ${country}.
 
-Before we continue, please note that Vera is a generative AI assistant, not a human, doctor, pharmacist, financial advisor, or legal advisor.
+Before we continue, please note that ASK Vera is a generative AI assistant, not a human, doctor, pharmacist, financial advisor, or legal advisor.
 
 By clicking "I agree", you acknowledge that your conversation will be used to retrieve helpful, approved information from Forever Living's ${country}-specific knowledge base and documents. All responses are grounded in official sources only.
 
 You can withdraw consent anytime by contacting the Forever Living team.`,
   Italian: (country) => `Grazie per aver confermato ${country}.
 
-Prima di continuare, tieni presente che Vera è un assistente AI generativo, non una persona, un medico, un farmacista, un consulente finanziario o un consulente legale.
+Prima di continuare, tieni presente che ASK Vera è un assistente AI generativo, non una persona, un medico, un farmacista, un consulente finanziario o un consulente legale.
 
 Cliccando su "Accetto", riconosci che la tua conversazione verrà utilizzata per recuperare informazioni utili e approvate dalla knowledge base e dai documenti Forever Living specifici per ${country}. Tutte le risposte si basano esclusivamente su fonti ufficiali.
 
 Puoi ritirare il consenso in qualsiasi momento contattando il team Forever Living.`,
   Dutch: (country) => `Bedankt voor het bevestigen van ${country}.
 
-Voordat we verdergaan: Vera is een generatieve AI-assistent, geen mens, arts, apotheker, financieel adviseur of juridisch adviseur.
+Voordat we verdergaan: ASK Vera is een generatieve AI-assistent, geen mens, arts, apotheker, financieel adviseur of juridisch adviseur.
 
 Door op "Ik ga akkoord" te klikken, erken je dat je gesprek wordt gebruikt om behulpzame, goedgekeurde informatie op te halen uit de knowledgebase en documenten van Forever Living die specifiek zijn voor ${country}. Alle antwoorden zijn uitsluitend gebaseerd op officiële bronnen.
 
 Je kunt je toestemming op elk moment intrekken door contact op te nemen met het Forever Living-team.`,
   French: (country) => `Merci d’avoir confirmé ${country}.
 
-Avant de continuer, veuillez noter que Vera est une assistante d’IA générative, et non une personne, un médecin, un pharmacien, un conseiller financier ou un conseiller juridique.
+Avant de continuer, veuillez noter que ASK Vera est une assistante d’IA générative, et non une personne, un médecin, un pharmacien, un conseiller financier ou un conseiller juridique.
 
 En cliquant sur « J’accepte », vous reconnaissez que votre conversation sera utilisée pour rechercher des informations utiles et approuvées dans la base de connaissances et les documents Forever Living spécifiques à ${country}. Toutes les réponses s’appuient uniquement sur des sources officielles.
 
 Vous pouvez retirer votre consentement à tout moment en contactant l’équipe Forever Living.`,
   Serbian: (country) => `Hvala što ste potvrdili ${country}.
 
-Pre nego što nastavimo, imajte u vidu da je Vera generativni AI asistent, a ne čovek, lekar, farmaceut, finansijski savetnik ili pravni savetnik.
+Pre nego što nastavimo, imajte u vidu da je ASK Vera generativni AI asistent, a ne čovek, lekar, farmaceut, finansijski savetnik ili pravni savetnik.
 
 Klikom na „Slažem se” potvrđujete da će se vaš razgovor koristiti za pronalaženje korisnih i odobrenih informacija iz baze znanja i dokumenata Forever Living specifičnih za ${country}. Svi odgovori se zasnivaju isključivo na zvaničnim izvorima.
 
@@ -292,11 +300,11 @@ const createConsentMessage = (country = "your country", language = "English") =>
 
 
 const loadingTextByLanguage = {
-  English: "Vera is looking that up for you...",
-  German: "Vera sucht das gerade für dich heraus...",
-  French: "Vera recherche cela pour vous...",
-  Spanish: "Vera está buscando eso para ti...",
-  Japanese: "Vera が確認しています...",
+  English: "ASK Vera is looking that up for you...",
+  German: "ASK Vera sucht das gerade für dich heraus...",
+  French: "ASK Vera recherche cela pour vous...",
+  Spanish: "ASK Vera está buscando eso para ti...",
+  Japanese: "ASK Vera が確認しています...",
 };
 
 const getLoadingText = (languageLabel = "English") =>
@@ -784,7 +792,7 @@ export default function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Unable to reach Vera right now.");
+        throw new Error(data.error || "Unable to reach ASK Vera right now.");
       }
 	  if (data.conversationId) {
   setConversationId(data.conversationId);   }
@@ -806,7 +814,7 @@ export default function App() {
           role: "assistant",
           text:
             error.message ||
-            "I couldn't reach Vera right now. Please try again.",
+            "I couldn't reach ASK Vera right now. Please try again.",
           showSource: false,
         },
       ]);
@@ -1063,7 +1071,7 @@ export default function App() {
             whileTap={{ scale: 0.92 }}
             onClick={() => setOpen(true)}
             className="fixed bottom-8 right-8 z-50 w-[70px] h-[70px] rounded-3xl bg-gradient-to-br from-[#2f6f61] to-[#1e5a4f] shadow-2xl flex items-center justify-center hover:shadow-[0_25px_60px_-10px_rgb(47,111,97)] border border-white/20 transition-all duration-200"
-            aria-label="Talk to Vera"
+            aria-label="Talk to ASK Vera"
           >
             <MessageCircle size={29} className="text-white" />
           </motion.button>
@@ -1087,7 +1095,7 @@ export default function App() {
                   <Sparkles size={21} className="text-white" />
                 </div>
                 <div>
-                  <h2 className="font-semibold text-[22px] leading-6 text-[#172620]">Vera</h2>
+                  <h2 className="font-semibold text-[22px] leading-6 text-[#172620]">ASK Vera</h2>
                   <div className="mt-1 flex items-center gap-2 text-[12px] font-medium text-[#60756d]">
                     <div className="w-2 h-2 bg-[#20b46a] rounded-full ring-2 ring-[#d9f4e6]" />
                     <span>Online • {selectedCountryLabel}</span>
@@ -1213,7 +1221,7 @@ export default function App() {
 
                          <div className="flex-1 pt-1">
   <div className="font-semibold text-lg text-[#1f2937]">Select your country & language</div>
-  <p className="mt-1 text-sm text-[#6b756c]">We'll personalise Vera's responses to your market.</p>
+  <p className="mt-1 text-sm text-[#6b756c]">We'll personalise ASK Vera's responses to your market.</p>
 </div>
                         </div>
 
@@ -1283,7 +1291,7 @@ export default function App() {
                             <a
                               key={link.label}
                               href={link.href}
-                              target="_blank"
+                              download={link.download}
                               rel="noreferrer"
                               className="flex items-center justify-between group hover:bg-white/70 -mx-3 px-3 py-2 rounded-2xl transition"
                             >
@@ -1432,7 +1440,7 @@ export default function App() {
                       }
                     }}
                     disabled={loading}
-                    placeholder="Ask Vera anything about your market..."
+                    placeholder="Ask anything about your market..."
                     className="flex-1 bg-[#f8f5ee] border border-[#e5dccd] rounded-[20px] px-5 py-3.5 outline-none text-[#223129] placeholder:text-[#8f9b94] focus:border-[#3f8174] focus:ring-4 focus:ring-[#d4e6d4]/60 text-[15px] shadow-inner transition-all"
                   />
 

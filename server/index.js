@@ -1,4 +1,4 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -10,7 +10,6 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 const app = express();
 const port = process.env.PORT || 3001;
 const defaultMarket = "United Kingdom";
-const PRODUCT_CARD_LIMIT = 10;
 
 const client = new BedrockAgentRuntimeClient({
   region: process.env.AWS_REGION,
@@ -19,9 +18,8 @@ const client = new BedrockAgentRuntimeClient({
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
 });
-// ====================== SIMPLE RATE LIMITER (demo protection) ======================
 const rateLimitMap = new Map();
-const RATE_LIMIT_MS = 60 * 1000;          // 1 minute window
+const RATE_LIMIT_MS = 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 30;
 
 const rateLimiter = (req, res, next) => {
@@ -51,11 +49,16 @@ const toMarketEnvKey = (market = "") =>
     .replace(/^_+|_+$/g, "");
 
 const getMarketKnowledgeBaseId = (selectedCountry = defaultMarket) => {
+  const marketCode = countryMarketCodeMap[selectedCountry];
   const marketSpecificKnowledgeBaseId =
     process.env[`BEDROCK_KNOWLEDGE_BASE_ID_${toMarketEnvKey(selectedCountry)}`];
 
   if (marketSpecificKnowledgeBaseId) {
     return marketSpecificKnowledgeBaseId;
+  }
+
+  if (marketCode && process.env[`BEDROCK_KNOWLEDGE_BASE_ID_${marketCode}`]) {
+    return process.env[`BEDROCK_KNOWLEDGE_BASE_ID_${marketCode}`];
   }
 
   if (selectedCountry === defaultMarket && process.env.BEDROCK_KNOWLEDGE_BASE_ID) {
@@ -133,11 +136,16 @@ const medicalEmergencyPattern =
 const healthSafetyPattern =
   /\b(pregnan\w*|breastfeed\w*|nursing|medication|medicine|prescription|drug interaction|doctor|pharmacist|medical|condition|disease|diagnos\w*|treat\w*|cure|prevent|diabet\w*|blood pressure|heart condition|allerg\w*|asthma|cancer|kidney|liver|autoimmune|safe to use|is it safe|contraindicat\w*|side effects?|symptoms?|pain|fever|infection|rash|dizzy|dizziness|nausea|vomit\w*|diarrhea|headache|migraine|surgery|chemotherapy|insulin|antibiotic|antidepressant|blood thinner|supplement interaction|can i take|should i take|safe for me|safe with)\b|gravidanza|incinta|allattamento|farmac[oi]|medicin[ae]|prescrizione|dottore|medico|farmacista|condizione medica|malattia|diagnosi|trattare|curare|diabete|pressione|allergia|sicuro|controindic|dolore|febbre|infezione|sintomi|zwanger|zwangerschap|borstvoeding|medicatie|geneesmiddel|recept|arts|apotheker|medische aandoening|ziekte|diagnose|behandelen|genezen|diabetes|bloeddruk|allergie|veilig|contra-indicatie|douleur|fi[eè]vre|sympt[oô]mes|m[ée]dicament|embarazo|lactancia|medicamento|dolor|fiebre|s[ií]ntomas|seguro/i;
 
+const childSafetyPattern =
+  /\b(child|children|kid|kids|baby|babies|toddler|infant|minor|teen|teenager|under\s*18|son|daughter|my\s+boy|my\s+girl|for\s+my\s+child|give\s+to\s+my\s+child|give\s+my\s+child|give\s+to\s+kids?)\b|bambin[oi]|figli[ao]|minorenne|b\u00e9b\u00e9|enfant|enfants|mineur|ni\u00f1o|ni\u00f1a|ni\u00f1os|menor|kind|kinderen|baby|peuter|minderjarige|kindern?|jugendlich|minderj\u00e4hrig/i;
+
 const isMedicalEmergencyQuestion = (message = "") =>
   medicalEmergencyPattern.test(message);
 
 const isHealthSafetyQuestion = (message = "") =>
-  isMedicalEmergencyQuestion(message) || healthSafetyPattern.test(message);
+  isMedicalEmergencyQuestion(message) ||
+  healthSafetyPattern.test(message) ||
+  childSafetyPattern.test(message);
 
 const medicalEmergencyMessages = {
   English:
@@ -186,10 +194,14 @@ const appendHealthGuidance = (answer = "", responseLanguage = "English") => {
 };
 
 const incomeOpportunityPattern =
-  /\b(rich|wealthy|millionaire|make money|earn money|income|financial freedom|guaranteed income|guarantee.*income|how much.*earn|can i earn|can i make|profit|commission|compensation|bonus|join forever|join forever living|business opportunity|become an fbo|forever business owner)\b|diventare ricc[oa]|guadagnare|reddito|compenso|opportunit[aà]\s+di\s+business|devenir riche|revenu|gagner de l'argent|oportunidad de negocio|hacerme rico|ganar dinero|ingresos|bogat|zarad|prihod/i;
+  /\b(rich|wealthy|millionaire|make money|earn money|financial freedom|guaranteed income|guarantee.*income|how much.*earn|can i make|join forever|join forever living|business opportunity|become an fbo)\b|diventare ricc[oa]|diventare milionari[oa]?|reddito garantito|opportunit[a?]\s+di\s+business|devenir riche|revenu garanti|gagner de l'argent|oportunidad de negocio|hacerme rico|ganar dinero|ingresos garantizados|bogat|garantovan.*prihod/i;
+
+const compensationPlanQuestionPattern =
+  /\b(leadership bonus|chairman'?s?\s+bonus|bonuses|bonus|commission|commissions|compensation plan|case credits?|ccs?|preferred customer profit|retail profit|personal bonus|manager bonus|eagle manager bonus)\b/i;
 
 const isIncomeOpportunityQuestion = (message = "") =>
-  incomeOpportunityPattern.test(message);
+  incomeOpportunityPattern.test(message) &&
+  !compensationPlanQuestionPattern.test(message);
 
 const incomeOpportunityMessages = {
   English:
@@ -284,46 +296,6 @@ const stripInlineMetadataBlocks = (text = "") =>
     .replace(/METADATA\s*[\s\S]*?\s*END_METADATA/gi, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-const stripProductCardJson = (answer = "") =>
-  answer
-    .replace(/\{[\s\S]*"product_cards"[\s\S]*\}/g, "")
-    .replace(/\{\s*\\"product_cards\\"[\s\S]*?\}\s*\]?/g, "")
-    .replace(/product cards:\s*$/i, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-
-const currencySymbolByCountry = {
-  "United Kingdom": "£",
-  Germany: "€",
-  France: "€",
-  Spain: "€",
-  Italy: "€",
-  Netherlands: "€",
-  Belgium: "€",
-  Ireland: "€",
-  Finland: "€",
-  Canada: "$",
-  "United States": "$",
-  Australia: "$",
-  "New Zealand": "$",
-  Singapore: "$",
-  Ecuador: "$",
-  Brazil: "R$",
-  Mexico: "$",
-  India: "₹",
-  Japan: "¥",
-  "South Korea": "₩",
-  Denmark: "kr",
-  Sweden: "kr",
-  Norway: "kr",
-  "South Africa": "R",
-};
-
-const getCurrencySymbolForCountry = (selectedCountry = defaultMarket) =>
-  process.env[`BEDROCK_PRODUCT_CURRENCY_${toMarketEnvKey(selectedCountry)}`] ||
-  currencySymbolByCountry[selectedCountry] ||
-  "";
 
 const firstMetadataValue = (metadata = {}, keys = []) => {
   for (const key of keys) {
@@ -336,13 +308,6 @@ const firstMetadataValue = (metadata = {}, keys = []) => {
 
   return "";
 };
-
-const normalizeMetadataUrl = (value = "") =>
-  String(value)
-    .split(",")
-    .map((part) => part.trim())
-    .find((part) => /^https?:\/\//i.test(part)) || "";
-
 
 const parseS3Uri = (uri = "") => {
   const match = String(uri).match(/^s3:\/\/([^/]+)\/(.+)$/i);
@@ -381,15 +346,6 @@ const toChatImageUrl = (value = "") => {
   }
 
   return "";
-};
-
-const normalizeProductAssetUrl = (value = "") => {
-  const firstValue = String(value || "")
-    .split(",")
-    .map((part) => part.trim())
-    .find(Boolean) || "";
-
-  return toChatImageUrl(firstValue) || firstValue;
 };
 
 const getImageCardsFromCitations = (citations = []) => {
@@ -507,176 +463,8 @@ const getImageCardsForResponse = ({ citations = [], message = "", selectedCountr
     })
     .slice(0, 3);
 };
-const getPriceFromMetadata = (metadata = {}, selectedCountry = "") => {
-  const explicitPrice = firstMetadataValue(metadata, [
-    "price_label",
-    "priceLabel",
-    "display_price",
-    "displayPrice",
-    "price_gbp",
-    "priceGbp",
-    "price_eur",
-    "priceEur",
-    "price_usd",
-    "priceUsd",
-    "price_cad",
-    "priceCad",
-    "price",
-  ]);
-
-  if (!explicitPrice) return "";
-  if (/^(£|€|\$|R\$|₹|¥|₩|kr|R)\s*/i.test(explicitPrice)) {
-    return explicitPrice;
-  }
-  if (!/^\d+(?:[.,]\d+)?$/.test(explicitPrice)) return explicitPrice;
-
-  const symbol = getCurrencySymbolForCountry(selectedCountry);
-  const normalizedPrice = explicitPrice.replace(",", ".");
-
-  return symbol ? `${symbol}${normalizedPrice}` : normalizedPrice;
-};
-
-const getProductCardsFromCitations = (citations = [], selectedCountry = "") => {
-  const seen = new Set();
-
-  return citations
-    .flatMap((citation) => citation.retrievedReferences || [])
-    .map((reference) => {
-      const metadata = reference.metadata || {};
-      const name = firstMetadataValue(metadata, [
-        "product_name",
-        "productName",
-        "product",
-        "name",
-        "Product",
-        "Name",
-      ]);
-      const contentType = firstMetadataValue(metadata, [
-        "content_type",
-        "contentType",
-        "type",
-        "record_type",
-        "recordType",
-      ]);
-      const productUrl = normalizeMetadataUrl(
-        firstMetadataValue(metadata, [
-          "product_url",
-          "productUrl",
-          "buy_url",
-          "buyUrl",
-          "shop_url",
-          "shopUrl",
-          "url",
-          "link",
-          "href",
-        ]),
-      );
-      const imageUrl = normalizeMetadataUrl(
-        firstMetadataValue(metadata, [
-          "image_url",
-          "imageUrl",
-          "image_urls",
-          "imageUrls",
-          "image",
-          "thumbnail",
-          "thumbnail_url",
-          "thumbnailUrl",
-        ]),
-      );
-      const description = firstMetadataValue(metadata, [
-        "short_desc",
-        "shortDescription",
-        "short_description",
-        "description",
-        "desc",
-        "approved_benefit",
-        "approvedBenefit",
-        "benefit",
-        "benefits",
-      ]);
-      const category = firstMetadataValue(metadata, [
-        "category",
-        "categories",
-        "content_type",
-        "product_category",
-          "productCategory",
-        ]);
-
-      const hasProductMetadata =
-        Boolean(name) &&
-        (Boolean(productUrl) ||
-          Boolean(imageUrl) ||
-          Boolean(getPriceFromMetadata(metadata, selectedCountry)) ||
-          Boolean(firstMetadataValue(metadata, ["sku", "SKU", "article_number", "articleNumber", "product_id", "productId"])) ||
-          /\bproduct|catalog|sku\b/i.test(String(contentType || category || "")));
-
-      if (!hasProductMetadata) return null;
-
-      const key = normalizeProductName(name);
-
-      if (!key || seen.has(key)) return null;
-      seen.add(key);
-
-      return {
-        name,
-        priceGbp: getPriceFromMetadata(metadata, selectedCountry),
-        description,
-        approvedBenefit: firstMetadataValue(metadata, [
-          "approved_benefit",
-          "approvedBenefit",
-        ]),
-        url: productUrl,
-        imageUrl,
-        buyUrl: productUrl,
-        rating: firstMetadataValue(metadata, ["rating", "stars"]),
-        categories: category ? [category] : [],
-        disclaimer: firstMetadataValue(metadata, ["disclaimer"]),
-      };
-    })
-    .filter(Boolean)
-    .slice(0, PRODUCT_CARD_LIMIT);
-};
-
-const extractProductCards = (answer = "") => {
-  const jsonMatch = answer.match(/\{[\s\S]*"product_cards"[\s\S]*\}/);
-
-  if (!jsonMatch) {
-    return { answer, productCards: [] };
-  }
-
-  try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    const productCards = Array.isArray(parsed.product_cards)
-      ? parsed.product_cards.map((card) => ({
-          name: card.name || "",
-          priceGbp: card.price_gbp || "",
-          description: card.description || "",
-          approvedBenefit: card.approved_benefit || "",
-          url: card.url || "",
-          imageUrl: card.image_url || "",
-          buyUrl: card.buy_url || card.url || "",
-          rating: card.rating || "",
-          categories: Array.isArray(card.categories) ? card.categories : [],
-          disclaimer: card.disclaimer || "",
-        }))
-      : [];
-
-    return {
-      answer: stripProductCardJson(answer.replace(jsonMatch[0], "")),
-      productCards,
-    };
-  } catch {
-    return {
-      answer: stripProductCardJson(answer),
-      productCards: [],
-    };
-  }
-};
-
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ukProductCatalogDir = path.join(__dirname, "product-catalog", "uk-en");
 
 const chatInsightsLogDir = path.join(__dirname, "logs");
 const chatInsightsLogPath = path.join(chatInsightsLogDir, "chat-events.jsonl");
@@ -867,7 +655,7 @@ const normalizeQuestionForInsights = (value = "") =>
     .trim();
 
 const isUnavailableAnswer = (answer = "") =>
-  /couldn'?t find|could not find|not available|not configured|unable to assist|could not reach|try again|no configured knowledge base|do not have|don'?t have|no information|not found|not in (the )?(selected )?(market )?knowledge base|informazion[ei].*non .*disponibil[ei]|non .*disponibil[ei].*documenti|non riesco .*trovare|non sono presenti|non .*present[ei].*risultat|je ne .*trouve|pas disponible|nicht .*verfügbar|konnte .*nicht finden|no .*disponible|no encuentro/i.test(
+  /couldn'?t find|could not find|not available|not configured|unable to assist|could not reach|try again|no configured knowledge base|do not have|don'?t have|no information|not found|not in (the )?(selected )?(market )?knowledge base|informazion[ei].*non .*disponibil[ei]|non .*disponibil[ei].*documenti|non riesco .*trovare|non sono presenti|non .*present[ei].*risultat|je ne .*trouve|pas disponible|nicht .*verf.{0,3}gbar|nicht .*enthalten|nicht .*gefunden|konnte .*nicht finden|no .*disponible|no encuentro/i.test(
     answer,
   );
 
@@ -886,6 +674,66 @@ const writeChatInsightEvent = (event) => {
     console.warn("Unable to write chat insight event:", error.message);
   }
 };
+
+const buildChatPayload = ({
+  answer = "",
+  productCards = [],
+  imageCards = [],
+  citations = [],
+  conversationId = null,
+}) => ({
+  answer,
+  productCards,
+  imageCards,
+  citations,
+  conversationId,
+});
+
+const writeChatTurnInsight = ({
+  message = "",
+  selectedCountry = defaultMarket,
+  selectedLanguage = "",
+  responseLanguage = "",
+  responseSource = "",
+  outcome = "ok",
+  citationCount = 0,
+  startedAt = Date.now(),
+}) => {
+  writeChatInsightEvent({
+    question: redactQuestionForLog(message),
+    normalizedQuestion: normalizeQuestionForInsights(message),
+    selectedCountry,
+    selectedLanguage,
+    responseLanguage,
+    responseSource,
+    outcome,
+    productCardCount: 0,
+    citationCount,
+    durationMs: Date.now() - startedAt,
+  });
+};
+
+const createUnavailableHandoff = ({
+  message = "",
+  selectedCountry = defaultMarket,
+  selectedLanguage = "",
+  responseLanguage = "",
+  transcript = [],
+  answer = "",
+  source = "",
+}) =>
+  createHandoffEvent({
+    question: message,
+    selectedCountry,
+    selectedLanguage,
+    responseLanguage,
+    reason: "unavailable-answer",
+    status: "open",
+    transcript,
+    answer,
+    source,
+    outcome: "unavailable",
+  });
 
 const readChatInsightEvents = () => readJsonlFile(chatInsightsLogPath);
 
@@ -995,7 +843,7 @@ const renderSupportAdminDashboard = (insights, handoffs) => `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Vera Support Desk</title>
+    <title>ASK Vera Support Desk</title>
     <style>
       :root {
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1033,7 +881,7 @@ const renderSupportAdminDashboard = (insights, handoffs) => `<!doctype html>
     <main>
       <header>
         <div>
-          <h1>Vera Support Desk</h1>
+          <h1>ASK Vera Support Desk</h1>
           <div class="muted">Handoff queue and chatbot monitoring generated ${escapeHtml(insights.generatedAt)}</div>
         </div>
         <div class="actions">
@@ -1119,460 +967,17 @@ const canReadChatInsights = (req) => {
 };
 
 
-const getProductField = (product = {}, keys = []) => firstMetadataValue(product, keys);
-
-const normalizeProductCategories = (product = {}) => {
-  const categories = product.categories || product.category || product.product_category;
-
-  if (Array.isArray(categories)) return categories.filter(Boolean);
-  if (typeof categories === "string" && categories.trim()) {
-    return categories
-      .split(/[,|]/)
-      .map((category) => category.trim())
-      .filter(Boolean);
-  }
-
-  return [];
-};
-
-const toProductCard = (product, selectedCountry = defaultMarket) => {
-  const explicitPrice = getProductField(product, [
-    "price_label",
-    "priceLabel",
-    "display_price",
-    "displayPrice",
-    "price_gbp",
-    "priceGbp",
-    "price_eur",
-    "priceEur",
-    "price",
-  ]);
-  const numericPrice = typeof product.price === "number" ? product.price : null;
-  const symbol = getCurrencySymbolForCountry(selectedCountry);
-  const priceGbp =
-    explicitPrice ||
-    (numericPrice !== null ? `${symbol || String.fromCharCode(163)}${numericPrice.toFixed(2)}` : "");
-  const productUrl = getProductField(product, [
-    "product_url",
-    "productUrl",
-    "buy_url",
-    "buyUrl",
-    "url",
-    "link",
-  ]);
-
-  return {
-    name: getProductField(product, ["name", "product_name", "productName", "title", "product"]) || "",
-    priceGbp,
-    description:
-      getProductField(product, [
-        "short_desc",
-        "shortDescription",
-        "short_description",
-        "description",
-        "approved_benefit",
-        "approvedBenefit",
-      ]) || "",
-    approvedBenefit: getProductField(product, ["approved_benefit", "approvedBenefit"]),
-    url: productUrl,
-    imageUrl: normalizeProductAssetUrl(
-      getProductField(product, [
-        "image_url",
-        "imageUrl",
-        "image_urls",
-        "imageUrls",
-        "s3_image_uri",
-        "s3ImageUri",
-        "image",
-        "thumbnail",
-      ]),
-    ),
-    buyUrl: productUrl || getProductField(product, ["product_url", "productUrl", "shop_url", "shopUrl"]),
-    rating: getProductField(product, ["rating", "stars"]),
-    categories: normalizeProductCategories(product),
-    disclaimer: getProductField(product, ["disclaimer"]) || "These statements have not been evaluated by the relevant regulatory authorities. Always consult a healthcare professional before use.",
-  };
-};
-
-const loadUkProductCatalog = () => {
-  if (!fs.existsSync(ukProductCatalogDir)) return [];
-
-  return fs
-    .readdirSync(ukProductCatalogDir)
-    .filter((fileName) => fileName.endsWith(".json") && !fileName.startsWith("categories_index"))
-    .flatMap((fileName) => {
-      try {
-                const raw = fs
-          .readFileSync(path.join(ukProductCatalogDir, fileName), "utf8")
-          .replace(/:\s*NaN\b/g, ": null");
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed)
-          ? parsed.map((product) => toProductCard(product, defaultMarket))
-          : [];
-      } catch (error) {
-        console.warn(`Unable to load product catalog file ${fileName}:`, error.message);
-        return [];
-      }
-    })
-    .filter((product) => product.name);
-};
-
-const ukProductCatalog = loadUkProductCatalog();
-
-const belgiumProductCatalogS3Uri =
-  process.env.BELGIUM_PRODUCT_CATALOG_S3_URI ||
-  "s3://global-chatbot-kb/Foreverliving-NL-BE/Products-NL-BE/products-nl-be.json";
-let belgiumProductCatalogPromise = null;
-
-const readS3Text = async (s3Uri = "") => {
-  const parsed = parseS3Uri(s3Uri);
-
-  if (!parsed) return "";
-
-  const object = await s3Client.send(
-    new GetObjectCommand({
-      Bucket: parsed.bucket,
-      Key: parsed.key,
-    }),
-  );
-  const chunks = [];
-
-  for await (const chunk of object.Body) {
-    chunks.push(chunk);
-  }
-
-  return Buffer.concat(chunks).toString("utf8");
-};
-
-const normalizeCatalogJson = (parsed) => {
-  if (Array.isArray(parsed)) return parsed;
-
-  for (const key of ["products", "items", "data", "cards", "product_cards"]) {
-    if (Array.isArray(parsed?.[key])) return parsed[key];
-  }
-
-  if (parsed && typeof parsed === "object") {
-    const values = Object.values(parsed);
-
-    if (values.every((value) => value && typeof value === "object" && !Array.isArray(value))) {
-      return values;
-    }
-  }
-
-  return [];
-};
-
-const loadBelgiumProductCatalog = async () => {
-  if (!belgiumProductCatalogPromise) {
-    belgiumProductCatalogPromise = readS3Text(belgiumProductCatalogS3Uri)
-      .then((raw) => JSON.parse(raw.replace(/:\s*NaN\b/g, ": null")))
-      .then((parsed) =>
-        normalizeCatalogJson(parsed)
-          .map((product) => toProductCard(product, "Belgium"))
-          .filter((product) => product.name),
-      )
-      .catch((error) => {
-        console.warn("Unable to load Belgium product catalog:", error.message);
-        belgiumProductCatalogPromise = null;
-        return [];
-      });
-  }
-
-  return belgiumProductCatalogPromise;
-};
-
-const getProductCatalogForCountry = async (selectedCountry = "") => {
-  if (selectedCountry === defaultMarket) return ukProductCatalog;
-  if (selectedCountry === "Belgium") return loadBelgiumProductCatalog();
-
-  return [];
-};
-
-const tokenizeSearchText = (value = "") =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2);
-
-const categoryKeywordMap = {
-  "bee-products": ["bee", "honey", "propolis", "pollen", "royal jelly", "propolis", "bee pollen"],
-  "skin-care": ["skin", "skincare", "cream", "lotion", "moistur", "body wash", "gelly", "huid", "aloe", "moisturizer", "serum"],
-  "personal-care": ["hair", "haar", "haarverzorging", "shampoo", "conditioner", "deodorant", "tooth", "lips", "soap", "jojoba", "nourishing", "aloe"],
-  drinks: ["drink", "drank", "berry", "nectar", "mango", "gel", "aloe vera gel", "aloe gel", "forever gel"],
-  nutritional: ["supplement", "vitamin", "nutrition", "wellness", "immune", "arctic", "garlic", "arctic sea", "calcium", "multi", "active pro-b", "fiber"],
-  "monthly-wellness-focus": ["wellness", "daily routine", "active pro-b", "aloe vera gel", "berry", "mango", "peaches", "fiber", "freedom"],
-  "weight-management": ["weight", "shake", "fibre", "fiber", "protein", "lean", "slim", "clean 9"],
-};
-
-const requestedProductCategoryRules = [
-  {
-    id: "hair-care",
-    requestPattern: /\b(hair|haar\w*|shampoo|conditioner)\b/i,
-    productPattern: /\b(hair|haar\w*|shampoo|conditioner|jojoba|nourishing hair oil)\b/i,
-  },
-  {
-    id: "skin-care",
-    requestPattern: /\b(skin|skincare|huid|cream|lotion|moistur\w*|gelly|body wash)\b/i,
-    productPattern: /\b(skin|skincare|huid|cream|lotion|moistur\w*|gelly|body wash)\b/i,
-  },
-  {
-    id: "bee-products",
-    requestPattern: /\b(bee|honey|propolis|pollen|royal jelly)\b/i,
-    productPattern: /\b(bee|honey|propolis|pollen|royal jelly)\b/i,
-  },
-  {
-    id: "drinks",
-    requestPattern: /\b(drinks?|drank|berry|nectar|mango|aloe vera gel)\b/i,
-    productPattern: /\b(drinks?|drank|berry|nectar|mango|aloe vera gel)\b/i,
-  },
-  {
-    id: "nutritional",
-    requestPattern: /\b(wellness|supplements?|vitamin|nutrition|immune|arctic|garlic|daily routine|pro-b|probiotic)\b/i,
-    productPattern: /\b(nutritional|monthly-wellness-focus|drinks?|supplements?|vitamin|nutrition|wellness|immune|arctic|garlic|active pro-b|probiotic|fiber|fibre|aloe vera gel|berry nectar|mango|peaches|freedom)\b/i,
-  },
-  {
-    id: "weight-management",
-    requestPattern: /\b(weight|shake|fibre|fiber|protein)\b/i,
-    productPattern: /\b(weight|shake|fibre|fiber|protein)\b/i,
-  },
-];
-
-const getCatalogProductText = (product = "") =>
-  `${product.name || ""} ${product.description || ""} ${product.categories?.join(" ") || ""}`
-    .toLowerCase();
-
-const getCatalogProductNameCategoryText = (product = "") =>
-  `${product.name || ""} ${product.categories?.join(" ") || ""}`.toLowerCase();
-
-const getRequestedProductCategoryRule = (message = "") =>
-  requestedProductCategoryRules.find((rule) => rule.requestPattern.test(message));
-
-const productMatchesRequestedCategory = (product, requestedCategoryRule) => {
-  if (!requestedCategoryRule) return true;
-
-  const categoryText = getCatalogProductNameCategoryText(product);
-  const isAccessoryLike = /\b(accessories|literature|sample|samples|gift bag|bottle|spray|ribbon|paper|postcard|lanyard|shaker|headband)\b/i.test(
-    categoryText,
-  );
-
-  if (requestedCategoryRule.id === "nutritional" && isAccessoryLike) {
-    return false;
-  }
-
-  if (requestedCategoryRule.id === "hair-care") {
-    return /\b(hair|haar\w*|shampoo|conditioner|jojoba|nourishing hair oil|hair care|hair-care)\b/i.test(
-      categoryText,
-    );
-  }
-
-  return requestedCategoryRule.productPattern.test(getCatalogProductText(product));
-};
-
-const scoreCatalogProduct = (product, searchText, answerText) => {
-  const haystack = `${searchText} ${answerText}`.toLowerCase();
-  const productText = getCatalogProductText(product);
-  const productTokens = tokenizeSearchText(product.name);
-  let score = 0;
-
-  // Strong exact name match
-  if (haystack.includes(product.name.toLowerCase())) score += 90;
-
-  // Token matching
-  productTokens.forEach((token) => {
-    if (haystack.includes(token)) score += 12;
-  });
-
-  // Category + keyword boosting (improved relevance)
-  product.categories?.forEach((category) => {
-    const normalizedCategory = String(category).toLowerCase();
-    const keywords = categoryKeywordMap[normalizedCategory] || [];
-
-    keywords.forEach((keyword) => {
-      if (haystack.includes(keyword)) score += 22;
-    });
-
-    if (haystack.includes(normalizedCategory.replace(/-/g, " "))) score += 25;
-  });
-
-  // Specific product affinity boosts
-  if (/aloe/.test(haystack) && /aloe/.test(productText)) score += 18;
-  if (/honey|bee|propolis/.test(haystack) && /bee|honey|propolis|pollen|royal jelly/.test(productText)) score += 30;
-  if (/hair|haar|shampoo|conditioner|jojoba/.test(haystack) && /hair|haar|shampoo|conditioner|jojoba|nourishing/.test(productText)) score += 32;
-  if (/skin|moistur|cream|lotion/.test(haystack) && /skin|moistur|lotion|cream|body/.test(productText)) score += 28;
-  if (/drink|gel|berry|nectar/.test(haystack) && /drink|gel|berry|nectar/.test(productText)) score += 25;
-  if (/\b(products?|producten?|recommend|best|good|option|show|help|choose)\b/.test(haystack)) score += 8;
-
-  // Bonus for popular/well-known products
-  if (/aloe.*vera|forever.*aloe|daily.*routine|clean 9|arctic sea/.test(productText)) score += 15;
-
-  return score;
-};
-
-const getCatalogProductCards = async ({
-  message = "",
-  answer = "",
-  selectedCountry = "",
-  limit = PRODUCT_CARD_LIMIT,
-}) => {
-  const catalog = await getProductCatalogForCountry(selectedCountry);
-
-  if (catalog.length === 0) return [];
-
-  const requestedCategoryRule = getRequestedProductCategoryRule(message);
-
-  return catalog
-    .filter((product) => productMatchesRequestedCategory(product, requestedCategoryRule))
-    .map((product) => ({
-      product,
-      score: scoreCatalogProduct(product, message, answer),
-    }))
-    .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(({ product }) =>
-      selectedCountry === defaultMarket ? enrichProductCard(product) : product,
-    );
-};
-const productCardCache = new Map();
 let lastBedrockDebug = null;
 
-const normalizeProductName = (name = "") =>
-  name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-
-const productCatalogByName = new Map(
-  ukProductCatalog.map((product) => [normalizeProductName(product.name), product]),
-);
-
-const rememberProductCards = (cards = []) => {
-  cards.forEach((card) => {
-    const key = normalizeProductName(card.name);
-
-    if (!key) return;
-
-    const existing = productCardCache.get(key) || {};
-    productCardCache.set(key, {
-      ...existing,
-      ...card,
-      imageUrl: card.imageUrl || existing.imageUrl || "",
-      priceGbp: card.priceGbp || existing.priceGbp || "",
-      url: card.url || existing.url || "",
-      buyUrl: card.buyUrl || existing.buyUrl || card.url || existing.url || "",
-      rating: card.rating || existing.rating || "",
-      categories: card.categories?.length ? card.categories : existing.categories || [],
-    });
-  });
-};
-
-const enrichProductCard = (card) => {
-  const key = normalizeProductName(card.name);
-  const catalogProduct = productCatalogByName.get(key);
-  const cached = productCardCache.get(key);
-
-  return {
-    ...card,
-    ...(catalogProduct || {}),
-    ...(cached || {}),
-    name: card.name || catalogProduct?.name || cached?.name || "",
-    imageUrl: card.imageUrl || catalogProduct?.imageUrl || cached?.imageUrl || "",
-    priceGbp: card.priceGbp || catalogProduct?.priceGbp || cached?.priceGbp || "",
-    url: card.url || catalogProduct?.url || cached?.url || "",
-    buyUrl:
-      card.buyUrl ||
-      catalogProduct?.buyUrl ||
-      catalogProduct?.url ||
-      cached?.buyUrl ||
-      cached?.url ||
-      "",
-    description:
-      card.description ||
-      catalogProduct?.description ||
-      cached?.description ||
-      "",
-    categories:
-      card.categories?.length
-        ? card.categories
-        : catalogProduct?.categories?.length
-          ? catalogProduct.categories
-          : cached?.categories || [],
-  };
-};
-
-const ukHairCareFallbackCards = [
-  {
-    name: "Aloe-Jojoba Shampoo",
-    priceGbp: "",
-    description:
-      "A gentle everyday shampoo from the UK product information that helps cleanse hair while leaving it soft and manageable.",
-    approvedBenefit: "",
-    url: "",
-    imageUrl: "",
-    buyUrl: "",
-    rating: "",
-    categories: ["hair care"],
-    disclaimer: "",
-  },
-  {
-    name: "Aloe-Jojoba Conditioner",
-    priceGbp: "",
-    description:
-      "A conditioner from the UK product information that helps soften, smooth, and hydrate hair.",
-    approvedBenefit: "",
-    url: "",
-    imageUrl: "",
-    buyUrl: "",
-    rating: "",
-    categories: ["hair care"],
-    disclaimer: "",
-  },
-  {
-    name: "Nourishing Hair Oil",
-    priceGbp: "",
-    description:
-      "A hair oil option from the UK product information for moisture, shine, and frizz control.",
-    approvedBenefit: "",
-    url: "",
-    imageUrl: "",
-    buyUrl: "",
-    rating: "",
-    categories: ["hair care"],
-    disclaimer: "",
-  },
-];
-
-const productRequestPattern =
-  /\b(products?|aloe|alo|gel|drink|body|lotion|wash|soap|lips|sunscreen|moistur\w*|cleanser|serum|skin|hair|care|wellness|supplements?|price|image|link|buy|purchase|shop|produkt|produkte|producten?|aanbevelen|kopen|prijs|huid|verzorging|haar\w*|shampoo|champu|champú|cabello|cheveux|soin|soins)\b/i;
-
-const nonProductCardRequestPattern =
-  /\b(global\s+rally|rally|case\s+credits?|credits?|chairman'?s?\s+bonus|bonus|incentives?|recognition|qualification|qualify|requirements?|travel\s+programs?|business\s+opportunit(?:y|ies)|fbo|manager|compensation|orders?|returns?|refund|shipping|training|learning|support|customer\s+service|pregnan\w*|breastfeed\w*|nursing|medication|medicine|prescription|medical|doctor|pharmacist|condition|disease|diagnos\w*|treat\w*|cure|prevent|diabet\w*|allerg\w*|asthma|safe to use|is it safe|contraindicat\w*)\b|rally\s+globale|case\s+credits?|crediti|riconoscimento|incentiv[oi]|qualificarsi|qualifica|requisiti|programma\s+viaggi|opportunit[aà]\s+di\s+business|rimborso|reso|spedizione|formazione|assistenza|gravidanza|incinta|allattamento|farmac[oi]|medicin[ae]|medico|farmacista|diabete|allergia|sicuro|zwanger|borstvoeding|medicatie|arts|apotheker|veilig/i;
-
-const japaneseProductRequestPattern =
-  /[\u5546\u54c1\u88fd\u54c1]|\u30d8\u30a2|\u30d8\u30a2\u30b1\u30a2|\u9aea|\u9aea\u306e\u30b1\u30a2|\u30b7\u30e3\u30f3\u30d7\u30fc|\u30b3\u30f3\u30c7\u30a3\u30b7\u30e7\u30ca\u30fc|\u304a\u3059\u3059\u3081|\u63d0\u6848/;
-
-const hairCareRequestPattern =
-  /\b(hair|hair care|shampoo|conditioner|haar\w*|cabello|cheveux)\b|\u30d8\u30a2|\u30d8\u30a2\u30b1\u30a2|\u9aea|\u30b7\u30e3\u30f3\u30d7\u30fc|\u30b3\u30f3\u30c7\u30a3\u30b7\u30e7\u30ca\u30fc/i;
-
-const isProductRequest = (message = "") =>
-  !nonProductCardRequestPattern.test(message) &&
-  (productRequestPattern.test(message) || japaneseProductRequestPattern.test(message));
-
-const shouldSuppressProductCards = (message = "", answer = "") =>
-  nonProductCardRequestPattern.test(`${message}\n${answer}`);
-
-const isHairCareRequest = (message = "", answer = "") =>
-  hairCareRequestPattern.test(`${message} ${answer}`);
-
 const isInternationalDirectoryQuestion = (message = "") =>
-  /\b(international|global|worldwide|office|offices|office address|address|directory|staff|contact|contacts|phone|email|thailand|thai|country office)\b|ufficio|indirizzo|directory|contatto|contatti|sede|thailandia|internazionale|mondiale|kantoor|adres|gids|contactpersoon|contacten|bureau|adresse|annuaire|coordonn[ée]es/i.test(
+  /\b(international|global|worldwide|office|offices|office address|address|directory|staff|contact|contacts|phone|email|thailand|thai|country office)\b|ufficio|indirizzo|directory|contatto|contatti|sede|thailandia|internazionale|mondiale|kantoor|adres|gids|contactpersoon|contacten|bureau|adresse|annuaire|coordonn[�e]es/i.test(
     message,
   );
 
 const getRetrievalHints = (message = "") => {
   const hints = [];
 
-  if (isProductRequest(message)) {
-    hints.push("Product retrieval intent: find relevant Forever Living product information, product names, categories, prices, images, usage notes, and product detail links in the selected market sources.");
-  } else if (isInternationalDirectoryQuestion(message)) {
+  if (isInternationalDirectoryQuestion(message)) {
     hints.push("International directory retrieval intent: answer from global-scoped office directory, staff contacts, country office, address, phone, email, and international contact records. Global-scoped directory results apply regardless of the selected market, so provide the requested office/contact details if they are retrieved.");
   } else {
     hints.push("Document retrieval intent: answer the user's question from selected-market documents first. Search exact user wording, translated equivalents, document titles, headings, policy section numbers, policy clause titles, FBO rules, company conduct rules, program names, qualification rules, benefits, requirements, and support details. Use global-scoped content only as a fallback unless the question is about international offices, staff, contacts, or directory entries.");
@@ -1605,267 +1010,33 @@ const hasExactRetrievalTerms = (message = "") => getExactRetrievalTerms(message)
 
 const decodeBasicHtmlEntities = (value = "") =>
   String(value)
-    .replace(/&auml;/gi, "ä")
-    .replace(/&ouml;/gi, "ö")
-    .replace(/&uuml;/gi, "ü")
-    .replace(/&Auml;/g, "Ä")
-    .replace(/&Ouml;/g, "Ö")
-    .replace(/&Uuml;/g, "Ü")
-    .replace(/&szlig;/gi, "ß")
-    .replace(/&aring;/gi, "å")
-    .replace(/&Aring;/g, "Å")
-    .replace(/&eacute;/gi, "é")
-    .replace(/&egrave;/gi, "è")
-    .replace(/&ecirc;/gi, "ê")
-    .replace(/&euml;/gi, "ë")
-    .replace(/&agrave;/gi, "à")
-    .replace(/&acirc;/gi, "â")
-    .replace(/&icirc;/gi, "î")
-    .replace(/&ocirc;/gi, "ô")
-    .replace(/&ugrave;/gi, "ù")
-    .replace(/&ccedil;/gi, "ç")
-    .replace(/&igrave;/gi, "ì")
-    .replace(/&ograve;/gi, "ò")
+    .replace(/&auml;/gi, "\u00e4")
+    .replace(/&ouml;/gi, "\u00f6")
+    .replace(/&uuml;/gi, "\u00fc")
+    .replace(/&Auml;/g, "\u00c4")
+    .replace(/&Ouml;/g, "\u00d6")
+    .replace(/&Uuml;/g, "\u00dc")
+    .replace(/&szlig;/gi, "\u00df")
+    .replace(/&aring;/gi, "\u00e5")
+    .replace(/&Aring;/g, "\u00c5")
+    .replace(/&eacute;/gi, "\u00e9")
+    .replace(/&egrave;/gi, "\u00e8")
+    .replace(/&ecirc;/gi, "\u00ea")
+    .replace(/&euml;/gi, "\u00eb")
+    .replace(/&agrave;/gi, "\u00e0")
+    .replace(/&acirc;/gi, "\u00e2")
+    .replace(/&icirc;/gi, "\u00ee")
+    .replace(/&ocirc;/gi, "\u00f4")
+    .replace(/&ugrave;/gi, "\u00f9")
+    .replace(/&ccedil;/gi, "\u00e7")
+    .replace(/&igrave;/gi, "\u00ec")
+    .replace(/&ograve;/gi, "\u00f2")
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/g, "'")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-
-const parseInlineMetadataBlocks = (text = "") =>
-  Array.from(text.matchAll(/METADATA\s*([\s\S]*?)\s*END_METADATA/gi)).map((match) => {
-    const metadata = {};
-
-    match[1].split(/\r?\n/).forEach((line) => {
-      const separatorIndex = line.indexOf(":");
-
-      if (separatorIndex === -1) return;
-
-      const key = line.slice(0, separatorIndex).trim();
-      const value = line.slice(separatorIndex + 1).trim();
-
-      if (key) {
-        metadata[key] = value;
-      }
-    });
-
-    return metadata;
-  });
-
-const getProductCardsFromInlineMetadata = (text = "", selectedCountry = "") => {
-  const seen = new Set();
-
-  return parseInlineMetadataBlocks(text)
-    .map((metadata) => {
-      const name = firstMetadataValue(metadata, [
-        "product_name",
-        "productName",
-        "product",
-        "name",
-        "title",
-      ]);
-      const productUrl = normalizeMetadataUrl(
-        firstMetadataValue(metadata, [
-          "product_url",
-          "productUrl",
-          "buy_url",
-          "buyUrl",
-          "shop_url",
-          "shopUrl",
-          "canonical_url",
-          "url",
-          "link",
-        ]),
-      );
-      const imageUrl = normalizeMetadataUrl(
-        firstMetadataValue(metadata, [
-          "image_url",
-          "imageUrl",
-          "image_urls",
-          "imageUrls",
-          "og_image_url",
-          "image",
-          "thumbnail",
-        ]),
-      );
-      const description = decodeBasicHtmlEntities(
-        firstMetadataValue(metadata, [
-          "short_description",
-          "short_desc",
-          "shortDescription",
-          "og_description",
-          "meta_description",
-          "description",
-          "long_description",
-        ]),
-      );
-      const category = firstMetadataValue(metadata, [
-        "category",
-        "categories",
-        "product_category",
-        "productCategory",
-      ]);
-      const contentType = firstMetadataValue(metadata, [
-        "content_type",
-        "contentType",
-        "type",
-        "record_type",
-        "recordType",
-      ]);
-      const key = normalizeProductName(name);
-      const hasProductMetadata =
-        Boolean(name) &&
-        (Boolean(productUrl) ||
-          Boolean(imageUrl) ||
-          Boolean(getPriceFromMetadata(metadata, selectedCountry)) ||
-          Boolean(firstMetadataValue(metadata, ["sku", "SKU", "article_number", "articleNumber", "product_id", "productId"])) ||
-          /\bproduct|catalog|sku\b/i.test(String(contentType || category || "")));
-
-      if (!hasProductMetadata || !key || seen.has(key)) return null;
-      seen.add(key);
-
-      return {
-        name,
-        priceGbp: getPriceFromMetadata(metadata, selectedCountry),
-        description,
-        approvedBenefit: "",
-        url: productUrl,
-        imageUrl,
-        buyUrl: productUrl,
-        rating: "",
-        categories: category ? [category] : [],
-        disclaimer: "These statements have not been evaluated by the relevant regulatory authorities. Always consult a healthcare professional before use.",
-      };
-    })
-    .filter(Boolean)
-    .slice(0, PRODUCT_CARD_LIMIT);
-};
-
-const getInlineMetadataTextFromCitations = (citations = []) =>
-  citations
-    .flatMap((citation) => citation.retrievedReferences || [])
-    .map((reference) => reference.content?.text || "")
-    .join("\n\n");
-
-const ensureProductCards = async ({
-  answer = "",
-  productCards = [],
-  message = "",
-  selectedCountry = "",
-}) => {
-  if (shouldSuppressProductCards(message, answer)) return [];
-  if (getQuestionContentType(message) !== "product") return [];
-  if (productCards.length > 0) {
-    const requestedCategoryRule = getRequestedProductCategoryRule(message);
-    const filteredCards = productCards.filter((product) =>
-      productMatchesRequestedCategory(product, requestedCategoryRule),
-    );
-    const cardsToUse = requestedCategoryRule ? filteredCards : productCards;
-
-    return selectedCountry === defaultMarket
-      ? cardsToUse.map(enrichProductCard)
-      : cardsToUse;
-  }
-  if (!isProductRequest(message)) return productCards;
-
-  const catalogCards = await getCatalogProductCards({
-    message,
-    answer,
-    selectedCountry,
-  });
-
-  if (catalogCards.length > 0) return catalogCards;
-  if (selectedCountry !== defaultMarket) return productCards;
-
-  if (!isHairCareRequest(message, answer)) return productCards;
-
-  const matchedCards = ukHairCareFallbackCards.filter((card) =>
-    answer.toLowerCase().includes(card.name.toLowerCase()),
-  );
-
-  return (matchedCards.length > 0 ? matchedCards : ukHairCareFallbackCards).map(enrichProductCard);
-};
-
-
-const localCatalogAnswerTemplates = {
-  English:
-    "Here are some relevant UK Forever Living product options based on your request. Click any card to learn more, see details, or purchase. Would you like to know more about a specific product?",
-  French:
-    "Voici quelques options de produits Forever Living pertinentes au Royaume-Uni. Cliquez sur une carte pour en savoir plus, voir les détails ou acheter. Voulez-vous en savoir plus sur un produit spécifique ?",
-  Spanish:
-    "Aquí tienes algunas opciones relevantes de productos Forever Living del Reino Unido. Haz clic en cualquier tarjeta para aprender más, ver detalles o comprar. ¿Quieres saber más sobre un producto específico?",
-  German:
-    "Hier sind einige passende Forever Living-Produktoptionen aus dem Vereinigten Königreich. Klicke auf eine Karte, um mehr zu erfahren, Details zu sehen oder zu kaufen. Möchtest du mehr über ein bestimmtes Produkt wissen?",
-  Dutch:
-    "Hier zijn enkele relevante Forever Living-productopties voor België. Klik op een kaart om meer te weten, details te bekijken of te kopen. Wil je meer weten over een specifiek product?",
-  Japanese:
-    "ã”è¦æœ›ã«åˆã†è‹±å›½å‘ã‘ã® Forever Living å•†å“ã‚ªãƒ—ã‚·ãƒ§ãƒ³ã‚’ã”ç´¹ä»‹ã—ã¾ã™ã€‚ä¸‹ã®ã‚«ãƒ¼ãƒ‰ã‹ã‚‰å•†å“è©³ç´°ã‚’é–‹ã„ãŸã‚Šã€ç›´æŽ¥è³¼å…¥ãƒšãƒ¼ã‚¸ã«é€²ã‚“ã ã‚Šã§ãã¾ã™ã€‚",
-};
-
-const belgiumLocalCatalogAnswerTemplates = {
-  English:
-    "Here are some relevant Belgium Forever Living product options based on your request. Click any card to learn more, see details, or purchase. Would you like to know more about a specific product?",
-  French:
-    "Voici quelques options de produits Forever Living pertinentes en Belgique. Cliquez sur une carte pour en savoir plus, voir les détails ou acheter. Voulez-vous en savoir plus sur un produit spécifique ?",
-  Dutch:
-    "Hier zijn enkele relevante Forever Living-productopties voor België. Klik op een kaart om meer te weten, details te bekijken of te kopen. Wil je meer weten over een specifiek product?",
-};
-
-const getLocalCatalogAnswerText = (selectedCountry = "", responseLanguage = "English") => {
-  if (selectedCountry === "Belgium") {
-    return (
-      belgiumLocalCatalogAnswerTemplates[responseLanguage] ||
-      belgiumLocalCatalogAnswerTemplates.English
-    );
-  }
-
-  return (
-    localCatalogAnswerTemplates[responseLanguage] ||
-    localCatalogAnswerTemplates.English
-  );
-};
-
-const shouldUseLocalCatalogOnly = (message = "", responseLanguage = "") => {
-  if (!["English", "French", "Spanish", "German", "Japanese", "Dutch"].includes(responseLanguage)) {
-    return false;
-  }
-
-  if (
-    /return|refund|policy|compensation|income|earn|commission|bonus|pregnant|diabetic|medication|dosage|doctor|pharmacist|medical|disease|treat|cure|prevent|diagnos/i.test(
-      message,
-    )
-  ) {
-    return false;
-  }
-
-  return isProductRequest(message);
-};
-
-const getLocalCatalogAnswer = async ({
-  message = "",
-  selectedCountry = "",
-  responseLanguage = "English",
-}) => {
-  if (![defaultMarket, "Belgium"].includes(selectedCountry)) return null;
-  if (!shouldUseLocalCatalogOnly(message, responseLanguage)) return null;
-
-  const productCards = await getCatalogProductCards({
-    message,
-    answer: "",
-    selectedCountry,
-    limit: PRODUCT_CARD_LIMIT,
-  });
-
-  if (productCards.length === 0) return null;
-
-  return {
-    answer: getLocalCatalogAnswerText(selectedCountry, responseLanguage),
-    productCards,
-    citations: [],
-    source: "local-product-catalog",
-  };
-};
 
 
 const countryMarketCodeMap = {
@@ -2000,11 +1171,7 @@ const buildMarketOrGlobalScopeFilter = (selectedCountry = defaultMarket) => {
 
 const buildGlobalScopeFilter = () => buildFlatOrFilter(globalMetadataFilters);
 
-const getQuestionContentType = (message = "") => {
-  if (isProductRequest(message)) return "product";
-
-  return "document";
-};
+const getQuestionContentType = () => "document";
 
 const buildRetrievalFilter = ({
   selectedCountry = defaultMarket,
@@ -2052,7 +1219,6 @@ const sendKnowledgeBaseRequest = async ({
   selectedCountry,
   selectedLanguage,
   responseLanguage,
-  productRequest,
   retrievalFilter,
   sessionId = null,
   forceSemanticSearch = false,
@@ -2075,7 +1241,7 @@ const sendKnowledgeBaseRequest = async ({
           modelArn: process.env.BEDROCK_MODEL_ARN,
           retrievalConfiguration: {
             vectorSearchConfiguration: {
-              numberOfResults: hasExactRetrievalTerms(message) ? 24 : productRequest ? 10 : 16,
+              numberOfResults: hasExactRetrievalTerms(message) ? 24 : 16,
               ...(hasExactRetrievalTerms(message) && !forceSemanticSearch ? { overrideSearchType: "HYBRID" } : {}),
               ...(retrievalFilter ? { filter: retrievalFilter } : {}),
             },
@@ -2156,7 +1322,6 @@ const sendKnowledgeBaseRequestWithSessionFallback = async (request) => {
 };
 
 const getRelaxedRetryFilters = ({
-  selectedCountry = defaultMarket,
   message = "",
   retrievalFilter,
 }) => {
@@ -2164,18 +1329,10 @@ const getRelaxedRetryFilters = ({
 
   if (getQuestionContentType(message) === "document") {
     if (isInternationalDirectoryQuestion(message)) {
-      return [buildGlobalScopeFilter(), undefined];
+      return [buildGlobalScopeFilter()];
     }
 
-    return [undefined];
-  }
-
-  if (
-    selectedCountry !== defaultMarket &&
-    isProductRequest(message) &&
-    getQuestionContentType(message) !== "product"
-  ) {
-    return [undefined];
+    return [buildGlobalScopeFilter()];
   }
 
   return [];
@@ -2190,13 +1347,19 @@ const shouldRetryKnowledgeBaseWithRelaxedFilter = ({
   Boolean(retrievalFilter) &&
   isUnavailableAnswer(answer) &&
   getRelaxedRetryFilters({ selectedCountry, message, retrievalFilter }).length > 0;
+
+const getRetrievedReferenceCount = (response = {}) =>
+  (response.citations || []).reduce(
+    (count, citation) => count + (citation.retrievedReferences || []).length,
+    0,
+  );
+
 const getKnowledgeBaseResult = async ({
   knowledgeBaseId,
   message,
   selectedCountry,
   selectedLanguage,
   responseLanguage,
-  productRequest,
   retrievalFilter,
   sessionId = null,
 }) => {
@@ -2206,14 +1369,14 @@ const getKnowledgeBaseResult = async ({
     selectedCountry,
     selectedLanguage,
     responseLanguage,
-    productRequest,
     retrievalFilter,
     sessionId,
   });
 
-  const firstParsedAnswer = extractProductCards(
-    firstResponse.output?.text || "I couldn't find an answer in the selected market Knowledge Base."
-  );
+  const firstParsedAnswer = {
+    answer: firstResponse.output?.text || "I couldn't find an answer in the selected market Knowledge Base.",
+  };
+  const firstRetrievedReferenceCount = getRetrievedReferenceCount(firstResponse);
   writeRetrievalDiagnosticsEvent({
     question: message,
     selectedCountry,
@@ -2249,11 +1412,12 @@ const getKnowledgeBaseResult = async ({
       selectedCountry,
       selectedLanguage,
       responseLanguage,
-      productRequest,
       retrievalFilter: retryFilter,
       sessionId,
     });
-    const retryParsedAnswer = extractProductCards(retryResponse.output?.text || "...");
+    const retryParsedAnswer = {
+      answer: retryResponse.output?.text || "...",
+    };
     const retryResponseSource = retryFilter
       ? "bedrock-knowledge-base-document-global-retry"
       : "bedrock-knowledge-base-document-unfiltered-retry";
@@ -2280,15 +1444,42 @@ const getKnowledgeBaseResult = async ({
     }
   }
 
+  if (firstRetrievedReferenceCount > 0 && getRetrievedReferenceCount(lastRetryResponse) === 0) {
+    return {
+      response: firstResponse,
+      parsedAnswer: firstParsedAnswer,
+      responseSource: "bedrock-knowledge-base",
+    };
+  }
+
   return {
     response: lastRetryResponse || firstResponse,
     parsedAnswer: lastRetryParsedAnswer || firstParsedAnswer,
     responseSource: lastRetryResponse
-      ? "bedrock-knowledge-base-document-unfiltered-retry"
+      ? "bedrock-knowledge-base-document-global-retry"
       : "bedrock-knowledge-base-document-retry",
   };
 };
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173" }));
+const allowedFrontendOrigins = new Set(
+  [
+    process.env.FRONTEND_ORIGIN,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+  ].filter(Boolean),
+);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedFrontendOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked origin: ${origin}`));
+    },
+  }),
+);
 app.use((_req, res, next) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   next();
@@ -2355,8 +1546,6 @@ app.get("/api/admin/chat-insights", (req, res) => {
   res.type("html").send(renderSupportAdminDashboard(insights, handoffs));
 });
 
-
-
 app.get("/api/admin/last-bedrock-debug", (req, res) => {
   if (!canReadChatInsights(req)) {
     return res.status(401).json({
@@ -2367,6 +1556,7 @@ app.get("/api/admin/last-bedrock-debug", (req, res) => {
 
   res.json(lastBedrockDebug || { message: "No Bedrock response captured yet." });
 });
+
 app.post("/api/escalations", (req, res) => {
   const {
     question = "",
@@ -2405,17 +1595,18 @@ app.post("/api/escalations", (req, res) => {
   res.status(201).json({
     ok: true,
     handoffId: handoff.id,
-    message:
-      "This conversation has been shared with the customer care team.",
+    message: "This conversation has been shared with the customer care team.",
   });
 });
+
 app.post("/api/chat", rateLimiter, async (req, res) => {
   try {
     const {
       message,
       selectedCountry = defaultMarket,
       selectedLanguage = "",
-      conversationId = null,        // ← NEW: for memory
+      conversationId = null,
+      transcript = [],
     } = req.body;
 
     if (!message || typeof message !== "string") {
@@ -2430,98 +1621,95 @@ app.post("/api/chat", rateLimiter, async (req, res) => {
     const incomeOpportunityQuestion = isIncomeOpportunityQuestion(message);
 
     if (isMedicalEmergencyQuestion(message)) {
-      const payload = {
+      const payload = buildChatPayload({
         answer: getLocalizedSafetyMessage(medicalEmergencyMessages, responseLanguage),
-        productCards: [],
-        imageCards: [],
-        citations: [],
         conversationId: sessionId,
-      };
+      });
 
-      writeChatInsightEvent({
-        question: redactQuestionForLog(message),
-        normalizedQuestion: normalizeQuestionForInsights(message),
+      writeChatTurnInsight({
+        message,
         selectedCountry,
         selectedLanguage,
         responseLanguage,
         responseSource: "medical-emergency-safety-response",
         outcome: "safety",
-        productCardCount: 0,
-        citationCount: 0,
-        durationMs: Date.now() - startedAt,
+        startedAt,
+      });
+
+      return res.json(payload);
+    }
+
+    if (childSafetyPattern.test(message)) {
+      const payload = buildChatPayload({
+        answer: getLocalizedSafetyMessage(healthGuidanceMessages, responseLanguage),
+        conversationId: sessionId,
+      });
+
+      writeChatTurnInsight({
+        message,
+        selectedCountry,
+        selectedLanguage,
+        responseLanguage,
+        responseSource: "child-product-safety-response",
+        outcome: "safety",
+        startedAt,
       });
 
       return res.json(payload);
     }
 
     if (incomeOpportunityQuestion) {
-      const payload = {
+      const payload = buildChatPayload({
         answer: getIncomeOpportunityMessage(responseLanguage),
-        productCards: [],
-        imageCards: [],
-        citations: [],
         conversationId: sessionId,
-      };
+      });
 
-      writeChatInsightEvent({
-        question: redactQuestionForLog(message),
-        normalizedQuestion: normalizeQuestionForInsights(message),
+      writeChatTurnInsight({
+        message,
         selectedCountry,
         selectedLanguage,
         responseLanguage,
         responseSource: "income-opportunity-compliance-response",
         outcome: "compliance",
-        productCardCount: 0,
-        citationCount: 0,
-        durationMs: Date.now() - startedAt,
+        startedAt,
       });
 
       return res.json(payload);
-    }
-
-    // Local catalog check
-    const localCatalogAnswer = await getLocalCatalogAnswer({
-      message,
-      selectedCountry,
-      responseLanguage,
-    });
-
-    if (localCatalogAnswer) {
-      rememberProductCards(localCatalogAnswer.productCards);
-      writeChatInsightEvent({
-        question: redactQuestionForLog(message),
-        normalizedQuestion: normalizeQuestionForInsights(message),
-        selectedCountry,
-        selectedLanguage,
-        responseLanguage,
-        responseSource: localCatalogAnswer.source || "local-product-catalog",
-        outcome: "ok",
-        productCardCount: localCatalogAnswer.productCards.length,
-        citationCount: 0,
-        durationMs: Date.now() - startedAt,
-      });
-      return res.json({ ...localCatalogAnswer, conversationId: sessionId });
     }
 
     const knowledgeBaseId = getMarketKnowledgeBaseId(selectedCountry);
 
     if (!knowledgeBaseId) {
-      const payload = {
-        answer: healthSafetyQuestion
-          ? appendHealthGuidance("", responseLanguage)
-          : getMarketUnavailableMessage(selectedCountry, responseLanguage),
-        productCards: [],
-        imageCards: [],
-        citations: [],
+      const answer = healthSafetyQuestion
+        ? appendHealthGuidance("", responseLanguage)
+        : getMarketUnavailableMessage(selectedCountry, responseLanguage);
+      const payload = buildChatPayload({
+        answer,
         conversationId: sessionId,
-      };
-      writeChatInsightEvent({ /* same as before */ });
-      createHandoffEvent({ /* same as before */ });
+      });
+
+      writeChatTurnInsight({
+        message,
+        selectedCountry,
+        selectedLanguage,
+        responseLanguage,
+        responseSource: "market-knowledge-base-unavailable",
+        outcome: "unavailable",
+        startedAt,
+      });
+      createUnavailableHandoff({
+        message,
+        selectedCountry,
+        selectedLanguage,
+        responseLanguage,
+        transcript,
+        answer,
+        source: "market-knowledge-base-unavailable",
+      });
+
       return res.json(payload);
     }
 
-    const questionContentType = getQuestionContentType(message);
-    const productRequest = questionContentType === "product";
     const retrievalFilter = buildRetrievalFilter({ selectedCountry, message });
 
     const knowledgeBaseResult = await getKnowledgeBaseResult({
@@ -2530,52 +1718,61 @@ app.post("/api/chat", rateLimiter, async (req, res) => {
       selectedCountry,
       selectedLanguage,
       responseLanguage,
-      productRequest,
       retrievalFilter,
       sessionId,
     });
 
-    // === YOUR EXISTING PRODUCT CARD LOGIC (leave this part exactly as you have it) ===
     const parsedAnswer = knowledgeBaseResult.parsedAnswer;
-    const shouldBuildProductCards =
-      productRequest && !shouldSuppressProductCards(message, parsedAnswer.answer);
-    const citationText = shouldBuildProductCards ? getInlineMetadataTextFromCitations(knowledgeBaseResult.response.citations || []) : "";
-    const inlineMetadataProductCards = shouldBuildProductCards ? getProductCardsFromInlineMetadata(`${parsedAnswer.answer || ""}\n\n${citationText}`, selectedCountry) : [];
-    const metadataProductCards = shouldBuildProductCards ? getProductCardsFromCitations(knowledgeBaseResult.response.citations || [], selectedCountry) : [];
-    const candidateProductCards = inlineMetadataProductCards.length ? inlineMetadataProductCards : metadataProductCards;
-
-    rememberProductCards(candidateProductCards);
-    const productCards = await ensureProductCards({ answer: stripProductCardJson(parsedAnswer.answer), productCards: candidateProductCards, message, selectedCountry });
-
-    const rawAnswer = stripInlineMetadataBlocks(stripProductCardJson(parsedAnswer.answer));
+    const rawAnswer = stripInlineMetadataBlocks(parsedAnswer.answer);
     const answer = healthSafetyQuestion
       ? appendHealthGuidance(rawAnswer, responseLanguage)
       : incomeOpportunityQuestion
         ? appendIncomeOpportunityGuidance(rawAnswer, responseLanguage)
       : rawAnswer;
     const citations = formatCitations(knowledgeBaseResult.response.citations || []);
-    const imageCards = getImageCardsForResponse({ citations: knowledgeBaseResult.response.citations || [], message, selectedCountry });
+    const imageCards = getImageCardsForResponse({
+      citations: knowledgeBaseResult.response.citations || [],
+      message,
+      selectedCountry,
+    });
 
-    const payload = {
+    const payload = buildChatPayload({
       answer,
-      productCards,
       imageCards,
       citations,
       conversationId: knowledgeBaseResult.response.sessionId || sessionId,
-    };
+    });
 
     const outcome = isUnavailableAnswer(answer) ? "unavailable" : "ok";
-    writeChatInsightEvent({ /* your existing logging code */ });
+    writeChatTurnInsight({
+      message,
+      selectedCountry,
+      selectedLanguage,
+      responseLanguage,
+      responseSource: knowledgeBaseResult.responseSource,
+      outcome,
+      citationCount: citations.length,
+      startedAt,
+    });
 
     if (outcome === "unavailable") {
-      createHandoffEvent({ /* your existing handoff */ });
+      createUnavailableHandoff({
+        message,
+        selectedCountry,
+        selectedLanguage,
+        responseLanguage,
+        transcript,
+        answer,
+        source: knowledgeBaseResult.responseSource,
+      });
     }
 
     res.json(payload);
   } catch (error) {
     console.error("Bedrock chat error:", error);
-    // your existing error handling
-    res.status(500).json({ error: "Vera could not reach the knowledge base. Please try again." });
+    res.status(500).json({
+      error: "ASK Vera could not reach the knowledge base. Please try again.",
+    });
   }
 });
 
@@ -2593,43 +1790,10 @@ export {
   decodeBasicHtmlEntities,
   detectResponseLanguage,
   getExactRetrievalTerms,
-  getProductCardsFromCitations,
-  getProductCardsFromInlineMetadata,
+  getMarketKnowledgeBaseId,
+  getRelaxedRetryFilters,
   isHealthSafetyQuestion,
   isIncomeOpportunityQuestion,
   isMedicalEmergencyQuestion,
   isUnavailableAnswer,
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
