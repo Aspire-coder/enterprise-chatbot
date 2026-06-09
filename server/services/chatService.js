@@ -9,6 +9,19 @@ import {
 } from "./complianceService.js";
 import { getImageCardsForResponse } from "./imageService.js";
 import { getCacheValue, setCacheValue } from "./cacheService.js";
+import { classifyIntent } from "./intentClassifierService.js";
+import { rewriteQuery } from "./queryRewriterService.js";
+import { validateAnswer } from "./answerValidationService.js";
+import {
+  buildRetryQuery,
+  shouldRetryRetrieval,
+} from "./retrievalRecoveryService.js";
+import {
+  buildContextualQuery,
+  getConversationContext,
+  saveConversationMessage,
+} from "./conversationMemoryService.js";
+import { recordMetric } from "./metricsService.js";
 import { getMarketUnavailableMessage } from "../controllers/sharedControllerHelpers.js";
 import { countryMarketCodeMap } from "../config/markets.js";
 import { isUnavailableAnswer } from "../utils/helpers.js";
@@ -61,13 +74,14 @@ const getCachedAnswer = async (cacheKey) => {
 const setCachedAnswer = async (cacheKey, chatResult) => {
   try {
     await setCacheValue(cacheKey, chatResult, { ttlSeconds: CHAT_CACHE_TTL_SECONDS });
-    console.log("CACHE SAVE", cacheKey);
   } catch (error) {
     console.warn("Redis cache write skipped:", error.message);
   }
 };
 
-const processQuestion = async ({
+const retrieveAndBuildChatResult = async ({
+  knowledgeBaseId,
+  query,
   message,
   selectedCountry,
   selectedLanguage,
@@ -75,42 +89,18 @@ const processQuestion = async ({
   sessionId,
   healthSafetyQuestion,
   incomeOpportunityQuestion,
+  intentResult,
+  rewrittenQuery,
 }) => {
-  const knowledgeBaseId = getMarketKnowledgeBaseId(selectedCountry);
-  const shouldUseCache = !healthSafetyQuestion && !incomeOpportunityQuestion;
-
-  if (!knowledgeBaseId) {
-    const answer = healthSafetyQuestion
-      ? appendHealthGuidance("", responseLanguage)
-      : getMarketUnavailableMessage(selectedCountry, responseLanguage);
-
-    return {
-      answer,
-      citations: [],
-      imageCards: [],
-      conversationId: sessionId,
-      responseSource: "market-knowledge-base-unavailable",
-      outcome: "unavailable",
-    };
-  }
-
-  const cacheKey = generateCacheKey({ message, selectedCountry, responseLanguage });
-
-  if (shouldUseCache) {
-    const cachedAnswer = await getCachedAnswer(cacheKey);
-
-    if (cachedAnswer) {
-      console.log("CACHE HIT", cacheKey);
-      return cachedAnswer;
-    }
-
-    console.log("CACHE MISS", cacheKey);
-  }
-
-  const retrievalFilter = buildRetrievalFilter({ selectedCountry, message });
+  const retrievalFilter = buildRetrievalFilter({
+    selectedCountry,
+    selectedLanguage,
+    responseLanguage,
+    message: query,
+  });
   const knowledgeBaseResult = await getKnowledgeBaseResult({
     knowledgeBaseId,
-    message,
+    message: query,
     selectedCountry,
     selectedLanguage,
     responseLanguage,
@@ -130,19 +120,225 @@ const processQuestion = async ({
     message,
     selectedCountry,
   });
-  const outcome = isUnavailableAnswer(answer) ? "unavailable" : "ok";
-  const chatResult = {
+  const validation = validateAnswer({
+    answer,
+    citations,
+    intent: intentResult.intent,
+  });
+  recordMetric({
+    type: "ANSWER_VALIDATED",
+    data: {
+      confidence: validation.confidence,
+      valid: validation.isValid,
+      reasons: validation.reasons,
+      intent: intentResult.intent,
+    },
+  });
+
+  return {
     answer,
     citations,
     imageCards,
     conversationId: knowledgeBaseResult.response.sessionId || sessionId,
     responseSource: knowledgeBaseResult.responseSource,
-    outcome,
+    outcome: isUnavailableAnswer(answer) ? "unavailable" : "ok",
+    intent: intentResult,
+    rewrittenQuery,
+    validation,
   };
+};
 
-  if (shouldUseCache && outcome === "ok") {
+const processQuestion = async ({
+  message,
+  selectedCountry,
+  selectedLanguage,
+  responseLanguage,
+  sessionId,
+  healthSafetyQuestion,
+  incomeOpportunityQuestion,
+}) => {
+  const conversationContext = await getConversationContext(sessionId);
+  const contextualQuery = buildContextualQuery({
+    message,
+    context: conversationContext,
+  });
+
+  if (sessionId && contextualQuery !== message) {
+    recordMetric({
+      type: "CONVERSATION_CONTEXT_USED",
+      data: {
+        conversationId: sessionId,
+        message,
+        contextualQuery,
+      },
+    });
+  }
+
+  const intentResult = classifyIntent(contextualQuery);
+  recordMetric({
+    type: "INTENT_CLASSIFIED",
+    data: intentResult,
+  });
+  const queryRewrite = rewriteQuery({
+    message: contextualQuery,
+    intent: intentResult.intent,
+  });
+  recordMetric({
+    type: "QUERY_REWRITTEN",
+    data: {
+      intent: intentResult.intent,
+      ...queryRewrite,
+    },
+  });
+
+  const knowledgeBaseId = getMarketKnowledgeBaseId(selectedCountry);
+  const shouldUseCache = !healthSafetyQuestion && !incomeOpportunityQuestion;
+
+  if (!knowledgeBaseId) {
+    const answer = healthSafetyQuestion
+      ? appendHealthGuidance("", responseLanguage)
+      : getMarketUnavailableMessage(selectedCountry, responseLanguage);
+
+    const unavailableResult = {
+      answer,
+      citations: [],
+      imageCards: [],
+      conversationId: sessionId,
+      responseSource: "market-knowledge-base-unavailable",
+      outcome: "unavailable",
+      intent: intentResult,
+      rewrittenQuery: queryRewrite.rewrittenQuery,
+    };
+    recordMetric({
+      type: "UNAVAILABLE_RESPONSE",
+      data: {
+        responseSource: unavailableResult.responseSource,
+        selectedCountry,
+        responseLanguage,
+        intent: intentResult.intent,
+      },
+    });
+
+    await saveConversationMessage({
+      conversationId: sessionId,
+      message,
+    });
+
+    return unavailableResult;
+  }
+
+  const cacheKey = generateCacheKey({
+    message: contextualQuery,
+    selectedCountry,
+    responseLanguage,
+  });
+
+  if (shouldUseCache) {
+    const cachedAnswer = await getCachedAnswer(cacheKey);
+
+    if (cachedAnswer) {
+      recordMetric({
+        type: "CACHE_HIT",
+        data: { cacheKey },
+      });
+      await saveConversationMessage({
+        conversationId: sessionId,
+        message,
+      });
+      return {
+        ...cachedAnswer,
+        conversationId: sessionId || cachedAnswer.conversationId,
+      };
+    }
+
+    recordMetric({
+      type: "CACHE_MISS",
+      data: { cacheKey },
+    });
+  }
+
+  const firstChatResult = await retrieveAndBuildChatResult({
+    knowledgeBaseId,
+    query: queryRewrite.rewrittenQuery,
+    message,
+    selectedCountry,
+    selectedLanguage,
+    responseLanguage,
+    sessionId,
+    healthSafetyQuestion,
+    incomeOpportunityQuestion,
+    intentResult,
+    rewrittenQuery: queryRewrite.rewrittenQuery,
+  });
+  let chatResult = firstChatResult;
+  const retryDecision = shouldRetryRetrieval(firstChatResult.validation);
+
+  if (retryDecision.shouldRetry) {
+    recordMetric({
+      type: "RETRIEVAL_RETRY_TRIGGERED",
+      data: {
+        reason: retryDecision.reason,
+        intent: intentResult.intent,
+      },
+    });
+
+    const retryQuery = buildRetryQuery({
+      originalQuery: queryRewrite.originalQuery,
+      rewrittenQuery: queryRewrite.rewrittenQuery,
+      intent: intentResult.intent,
+    });
+    const retryChatResult = await retrieveAndBuildChatResult({
+      knowledgeBaseId,
+      query: retryQuery,
+      message,
+      selectedCountry,
+      selectedLanguage,
+      responseLanguage,
+      sessionId,
+      healthSafetyQuestion,
+      incomeOpportunityQuestion,
+      intentResult,
+      rewrittenQuery: retryQuery,
+    });
+    const selectedResult =
+      retryChatResult.validation.confidence > firstChatResult.validation.confidence
+        ? "retry"
+        : "original";
+
+    recordMetric({
+      type: "RETRIEVAL_RETRY_COMPLETED",
+      data: {
+        originalConfidence: firstChatResult.validation.confidence,
+        retryConfidence: retryChatResult.validation.confidence,
+        selected: selectedResult,
+      },
+    });
+
+    if (selectedResult === "retry") {
+      chatResult = retryChatResult;
+    }
+  }
+
+  if (shouldUseCache && chatResult.outcome === "ok") {
     await setCachedAnswer(cacheKey, chatResult);
   }
+
+  if (chatResult.outcome === "unavailable") {
+    recordMetric({
+      type: "UNAVAILABLE_RESPONSE",
+      data: {
+        responseSource: chatResult.responseSource,
+        selectedCountry,
+        responseLanguage,
+        intent: intentResult.intent,
+      },
+    });
+  }
+
+  await saveConversationMessage({
+    conversationId: chatResult.conversationId || sessionId,
+    message,
+  });
 
   return chatResult;
 };

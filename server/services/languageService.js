@@ -1,42 +1,88 @@
-const detectMessageLanguage = (message = "") => {
-  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(message)) return "Japanese";
-  if (/[\u0400-\u04ff]|\b(zdravo|hvala|molim|proizvod\w*|proizvodi|srbija|srpski|kako|koji|koja|koje|šta|sta|uputstva|uslovi|poslovna\s+prilika)\b/i.test(message)) return "Serbian";
-  if (/[ąćęłńóśźż]|\b(dzień|polski|produkty)\b/i.test(message)) return "Polish";
-  if (/[\u00e4\u00f6\u00fc\u00df\u00c4\u00d6\u00dc]|\b(welche|welcher|welches|produkte|produkt|sind|enth[aä]lt|enthalten|programm|artikel|bitte|empfehlen|haarpflege|informationen|adresse|b[üu]ro|deutschland)\b/i.test(message)) return "German";
-  if (/[\u00e9\u00e8\u00ea\u00eb\u00e0\u00e2\u00ee\u00ef\u00f4\u00fb\u00f9\u00e7\u0153]|\b(bonjour|quels?|quelles?|produits?|contient|programme|article|cheveux|recommande|adresse|bureau|france)\b/i.test(message)) return "French";
-  if (/\b(ciao|raccontami|dimmi|come|quali|prodott[io]|contenut[oi]|programma|articolo|gravidanza|allattamento|farmaci|italia|indirizzo|ufficio)\b|[ìò]/i.test(message)) return "Italian";
-  if (/[\u00e1\u00ed\u00f3\u00fa\u00f1\u00bf\u00a1]|\b(hola|qu[eé]|cu[aá]les?|productos?|art[ií]culo|cabello|recomienda|recomendar|direcci[oó]n|oficina|espa[nñ]a)\b/i.test(message)) return "Spanish";
-  if (/\b(hallo|vertel|producten|nederland|zwanger|borstvoeding|medicatie|apotheker)\b/i.test(message)) return "Dutch";
-  if (/\b(what|how|tell|show|recommend|products|please|help|can|should|is|are|the|about)\b/i.test(message)) return "English";
+// services/languageService.js
+import path       from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync }  from "node:fs";
+import { readS3Json }    from "../utils/s3Loader.js";
 
-  return "";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ── In-memory cache — loaded once, reused forever ─────────────────────────
+let _complianceMessages = null;
+let _healthFooters      = null;
+
+// ── Generic local JSON reader ─────────────────────────────────────────────
+const readLocalJson = (filename) => {
+  const filePath = path.join(__dirname, "..", "config", filename);
+  return JSON.parse(readFileSync(filePath, "utf8"));
 };
 
-const shouldUseSelectedLanguage = (message = "") =>
-  /^show me forever living/i.test(message) ||
-  /^the user replied/i.test(message);
+// ── Load compliance messages ───────────────────────────────────────────────
+const loadComplianceMessages = async () => {
+  if (_complianceMessages) return _complianceMessages;
 
-const detectResponseLanguage = (message = "", selectedLanguage = "") => {
-  if (selectedLanguage && shouldUseSelectedLanguage(message)) return selectedLanguage;
-
-  if (["German", "Italian", "Serbian", "French", "Spanish"].includes(selectedLanguage)) {
-    return selectedLanguage;
+  if (process.env.COMPLIANCE_MESSAGES_S3_URI) {
+    try {
+      _complianceMessages = await readS3Json(process.env.COMPLIANCE_MESSAGES_S3_URI);
+      console.log("Compliance messages loaded from S3");
+      return _complianceMessages;
+    } catch (err) {
+      console.warn("S3 compliance messages failed, using local fallback:", err.message);
+    }
   }
 
-  const messageLanguage = detectMessageLanguage(message);
-  const shouldPreserveSelectedLanguage =
-    selectedLanguage &&
-    selectedLanguage !== "English" &&
-    (!messageLanguage || messageLanguage === "English");
-
-  if (shouldPreserveSelectedLanguage) return selectedLanguage;
-
-  if (messageLanguage) return messageLanguage;
-
-  return selectedLanguage || "English";
+  _complianceMessages = readLocalJson("compliance-messages.json");
+  console.log("Compliance messages loaded from local file");
+  return _complianceMessages;
 };
 
-export {
-  detectMessageLanguage,
-  detectResponseLanguage,
+// ── Load health footers ────────────────────────────────────────────────────
+const loadHealthFooters = async () => {
+  if (_healthFooters) return _healthFooters;
+
+  if (process.env.HEALTH_FOOTERS_S3_URI) {
+    try {
+      _healthFooters = await readS3Json(process.env.HEALTH_FOOTERS_S3_URI);
+      console.log("Health footers loaded from S3");
+      return _healthFooters;
+    } catch (err) {
+      console.warn("S3 health footers failed, using local fallback:", err.message);
+    }
+  }
+
+  _healthFooters = readLocalJson("health-footers.json");
+  console.log("Health footers loaded from local file");
+  return _healthFooters;
+};
+
+// ── Public API ─────────────────────────────────────────────────────────────
+
+// Returns the correct localized compliance message
+// Always falls back to English if the requested language is not found
+export const getComplianceMessage = async (type, language = "English") => {
+  const messages = await loadComplianceMessages();
+  const typeMessages = messages[type] ?? messages["health_safety"];
+  return typeMessages[language] ?? typeMessages["English"];
+};
+
+// Appends the health guidance footer to a Bedrock answer
+export const appendHealthGuidance = async (answer = "", language = "English") => {
+  const footers = await loadHealthFooters();
+  const footer  = footers[language] ?? footers["English"];
+  return answer + footer;
+};
+
+// Returns the language to respond in
+// If selectedLanguage is set and not "Auto", use it — otherwise default to English
+export const detectResponseLanguage = (selectedLanguage = "") =>
+  selectedLanguage && selectedLanguage !== "Auto"
+    ? selectedLanguage
+    : "English";
+
+// Hot-reload — call this to force fresh load from S3 without server restart
+// Useful for: POST /api/admin/reload-config
+export const reloadI18nContent = async () => {
+  _complianceMessages = null;
+  _healthFooters      = null;
+  await Promise.all([loadComplianceMessages(), loadHealthFooters()]);
+  console.log("i18n content reloaded");
 };

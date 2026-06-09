@@ -1,76 +1,88 @@
-import {
-  RATE_LIMIT_MAX_REQUESTS,
-  RATE_LIMIT_WINDOW_MS,
-} from "../config/constants.js";
-import { buildCacheKey, connectRedis } from "../services/cacheService.js";
+// middleware/rateLimiter.js
 
+const WINDOW_MS = 60 * 1000; // 1 minute window
+const MAX_REQ   = 30;         // max requests per IP per window
+
+// ── In-memory fallback store ───────────────────────────────────────────────
 const memoryStore = new Map();
 
-const getClientIp = (req) => req.ip || req.socket?.remoteAddress || "unknown";
+const inMemoryCheck = (ip) => {
+  const now   = Date.now();
+  const entry = memoryStore.get(ip) ?? { count: 0, resetAt: now + WINDOW_MS };
 
-const logRateLimitExceeded = (ip) => {
-  console.warn(`RATE_LIMIT_EXCEEDED\nip=${ip}`);
-};
-
-const getMemoryRateLimitCount = (ip) => {
-  const now = Date.now();
-  const record = memoryStore.get(ip);
-
-  if (!record || now > record.resetAt) {
-    const nextRecord = {
-      count: 1,
-      resetAt: now + RATE_LIMIT_WINDOW_MS,
-    };
-    memoryStore.set(ip, nextRecord);
-    return nextRecord.count;
+  if (now > entry.resetAt) {
+    entry.count   = 0;
+    entry.resetAt = now + WINDOW_MS;
   }
 
-  record.count += 1;
-  memoryStore.set(ip, record);
-  return record.count;
+  entry.count++;
+  memoryStore.set(ip, entry);
+  return entry.count > MAX_REQ;
 };
 
-const getRedisRateLimitCount = async (ip) => {
-  const client = await connectRedis();
-  if (!client) return null;
+// ── Redis / ElastiCache connection ─────────────────────────────────────────
+// Attempted once at startup — never throws, always falls back gracefully
+let redisClient = null;
 
-  const key = buildCacheKey("rate-limit", [ip]);
-  const count = await client.incr(key);
-
-  if (count === 1) {
-    await client.expire(key, Math.ceil(RATE_LIMIT_WINDOW_MS / 1000));
+const initRedis = async () => {
+  const url = process.env.ELASTICACHE_URL;
+  if (!url) {
+    console.log("Rate limiter: ELASTICACHE_URL not set, using in-memory fallback");
+    return;
   }
 
-  return count;
-};
-
-const getRateLimitCount = async (ip) => {
   try {
-    const redisCount = await getRedisRateLimitCount(ip);
-    if (redisCount !== null) return redisCount;
-  } catch (error) {
-    console.warn("Redis rate limiter unavailable, using memory storage:", error.message);
-  }
+    const { createClient } = await import("redis");
+    const client = createClient({ url });
 
-  return getMemoryRateLimitCount(ip);
+    client.on("error", (err) =>
+      console.warn("Rate limiter Redis error:", err.message)
+    );
+
+    await client.connect();
+    redisClient = client;
+    console.log("Rate limiter: connected to ElastiCache");
+  } catch (err) {
+    console.warn("Rate limiter: Redis unavailable, using in-memory fallback:", err.message);
+  }
 };
 
-const rateLimiter = async (req, res, next) => {
-  try {
-    const ip = getClientIp(req);
-    const count = await getRateLimitCount(ip);
+// Start connection attempt at module load — non-blocking
+initRedis();
 
-    if (count > RATE_LIMIT_MAX_REQUESTS) {
-      logRateLimitExceeded(ip);
-      return res.status(429).json({
-        error: "Too many requests. Please try again in a minute.",
-      });
+// ── Rate limiter middleware ────────────────────────────────────────────────
+export const rateLimiter = async (req, res, next) => {
+  const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+
+  // ── Try Redis first ──────────────────────────────────────────────────────
+  if (redisClient) {
+    try {
+      const key   = `ratelimit:${ip}`;
+      const count = await redisClient.incr(key);
+
+      // Set expiry only on first request in this window
+      if (count === 1) await redisClient.expire(key, 60);
+
+      if (count > MAX_REQ) {
+        return res.status(429).json({
+          error: "Too many requests. Please wait and try again.",
+        });
+      }
+
+      return next();
+
+    } catch (err) {
+      // Redis threw mid-request — fall through to in-memory silently
+      console.warn("Rate limiter Redis check failed, falling back:", err.message);
     }
-  } catch (error) {
-    console.warn("Rate limiter failed open:", error.message);
+  }
+
+  // ── In-memory fallback ───────────────────────────────────────────────────
+  if (inMemoryCheck(ip)) {
+    return res.status(429).json({
+      error: "Too many requests. Please wait and try again.",
+    });
   }
 
   next();
 };
-
-export { rateLimiter };

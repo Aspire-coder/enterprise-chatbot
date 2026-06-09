@@ -1,0 +1,14 @@
+{
+  "Austria":        { "code": "AT", "language": "de", "name": "Austria" },
+  "Canada":         { "code": "CA", "language": "en", "name": "Canada" },
+  "Switzerland":    { "code": "CH", "language": "de", "name": "Switzerland" },
+  "Germany":        { "code": "DE", "language": "de", "name": "Germany" },
+  "Italy":          { "code": "IT", "language": "it", "name": "Italy" },
+  "Netherlands":    { "code": "NL", "language": "nl", "name": "Netherlands" },
+  "Sweden":         { "code": "SE", "language": "sv", "name": "Sweden" },
+  "United Kingdom": { "code": "UK", "language": "en", "name": "United Kingdom" },
+  "Belgium":        { "code": "BE", "language": "nl", "name": "Belgium" },
+  "France":         { "code": "FR", "language": "fr", "name": "France" },
+  "Spain":          { "code": "ES", "language": "es", "name": "Spain" },
+  "Ireland":        { "code": "IE", "language": "en", "name": "Ireland" }
+}

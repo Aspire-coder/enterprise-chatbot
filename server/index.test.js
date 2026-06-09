@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   app,
@@ -234,16 +235,22 @@ test("requested markets can resolve configured knowledge base ids", () => {
   }
 });
 
-test("normal Italy document questions search Italy before global fallback", () => {
+test("normal Italy document questions search Italy with global included", () => {
   const filter = buildRetrievalFilter({
     selectedCountry: "Italy",
+    selectedLanguage: "Italian",
+    responseLanguage: "Italian",
     message:
       "5 Lealtà Gli FBO sono leali nei confronti dell'Azienda e degli Incaricati Forever.",
   });
   const serialized = JSON.stringify(filter);
 
   assert.match(serialized, /"ITA"/);
-  assert.doesNotMatch(serialized, /"global"/);
+  assert.match(serialized, /"country_code"/);
+  assert.match(serialized, /"language"/);
+  assert.match(serialized, /"it"/);
+  assert.match(serialized, /"global"/);
+  assert.doesNotMatch(serialized, /"it-IT"/);
 });
 
 test("market document retries do not search unrelated country documents", () => {
@@ -263,6 +270,75 @@ test("market document retries do not search unrelated country documents", () => 
   assert.match(serialized, /"global"/);
   assert.doesNotMatch(serialized, /"SE"/);
   assert.doesNotMatch(serialized, /"NL"/);
+});
+
+test("Canada retrieval matches KB metadata country_code and language", () => {
+  const filter = buildRetrievalFilter({
+    selectedCountry: "Canada",
+    selectedLanguage: "French",
+    responseLanguage: "French",
+    message: "Comment puis-je soumettre une plainte?",
+  });
+  const serialized = JSON.stringify(filter);
+
+  assert.match(serialized, /"country_code"/);
+  assert.match(serialized, /"CA"/);
+  assert.match(serialized, /"language"/);
+  assert.match(serialized, /"en"/);
+  assert.match(serialized, /"scope"/);
+  assert.match(serialized, /"global"/);
+  assert.doesNotMatch(serialized, /"en-CA"/);
+  assert.doesNotMatch(serialized, /"fr-CA"/);
+  assert.doesNotMatch(serialized, /"CA-EN"/);
+  assert.doesNotMatch(serialized, /"CA-FR"/);
+  assert.doesNotMatch(serialized, /"France"/);
+  assert.doesNotMatch(serialized, /"Germany"/);
+});
+
+test("France retrieval matches KB metadata country_code and language", () => {
+  const filter = buildRetrievalFilter({
+    selectedCountry: "France",
+    selectedLanguage: "French",
+    responseLanguage: "French",
+    message: "Comment puis-je soumettre une plainte?",
+  });
+  const serialized = JSON.stringify(filter);
+
+  assert.match(serialized, /"country_code"/);
+  assert.match(serialized, /"FR"/);
+  assert.match(serialized, /"language"/);
+  assert.match(serialized, /"fr"/);
+  assert.match(serialized, /"scope"/);
+  assert.match(serialized, /"global"/);
+  assert.doesNotMatch(serialized, /"fr-FR"/);
+  assert.doesNotMatch(serialized, /"de-DE"/);
+  assert.doesNotMatch(serialized, /"Germany"/);
+});
+
+test("global retrieval branch does not require language matching", () => {
+  const filter = buildRetrievalFilter({
+    selectedCountry: "Canada",
+    selectedLanguage: "French",
+    responseLanguage: "French",
+    message: "Comment puis-je soumettre une plainte?",
+  });
+  const globalBranch = filter.orAll.find((branch) => {
+    const serializedBranch = JSON.stringify(branch);
+
+    return serializedBranch.includes('"scope"') && serializedBranch.includes('"global"');
+  });
+  const serializedGlobalBranch = JSON.stringify(globalBranch);
+
+  assert.ok(globalBranch);
+  assert.doesNotMatch(serializedGlobalBranch, /"language"/);
+  assert.doesNotMatch(serializedGlobalBranch, /"en"/);
+});
+
+test("Bedrock filter fallback never retries unfiltered retrieval", () => {
+  const source = readFileSync(new URL("./services/bedrockService.js", import.meta.url), "utf8");
+
+  assert.doesNotMatch(source, /retrievalFilter:\s*undefined/);
+  assert.match(source, /fallback=global-only/);
 });
 
 test("Italian unavailable wording triggers relaxed retry", () => {

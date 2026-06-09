@@ -1,0 +1,41 @@
+{
+  "medical_emergency": {
+    "English": "This sounds like a medical emergency. Please call emergency services immediately — 999 (UK), 112 (Europe), or 911 (North America). I am not able to provide medical advice.",
+    "Italian": "Questa sembra un'emergenza medica. Chiama immediatamente i servizi di emergenza — 118 o 112. Non sono in grado di fornire consulenza medica.",
+    "German":  "Das klingt nach einem medizinischen Notfall. Bitte rufen Sie sofort den Notruf an — 112. Ich kann keine medizinische Beratung leisten.",
+    "French":  "Cela ressemble à une urgence médicale. Appelez immédiatement les secours — 15 ou 112. Je ne suis pas en mesure de fournir des conseils médicaux.",
+    "Spanish": "Esto parece una emergencia médica. Llama inmediatamente a los servicios de emergencia — 112. No puedo proporcionar asesoramiento médico.",
+    "Dutch":   "Dit lijkt op een medisch noodgeval. Bel onmiddellijk de nooddiensten — 112. Ik kan geen medisch advies geven.",
+    "Swedish": "Detta verkar vara ett medicinskt nödfall. Ring omedelbart nödnumret — 112. Jag kan inte ge medicinsk rådgivning."
+  },
+
+  "health_safety": {
+    "English": "I'm not able to provide medical advice or make health claims about any Forever Living products. For any health-related questions, please consult a qualified healthcare professional before use.",
+    "Italian": "Non sono in grado di fornire consulenza medica o fare affermazioni sulla salute riguardo ai prodotti Forever Living. Per qualsiasi domanda relativa alla salute, consulta un professionista sanitario qualificato prima dell'uso.",
+    "German":  "Ich kann keine medizinische Beratung leisten oder gesundheitliche Aussagen zu Forever Living-Produkten machen. Bei gesundheitlichen Fragen wenden Sie sich bitte vor der Verwendung an einen qualifizierten Arzt.",
+    "French":  "Je ne suis pas en mesure de fournir des conseils médicaux ou de faire des allégations de santé concernant les produits Forever Living. Pour toute question relative à la santé, veuillez consulter un professionnel de santé qualifié avant utilisation.",
+    "Spanish": "No puedo proporcionar asesoramiento médico ni hacer declaraciones de salud sobre los productos Forever Living. Para cualquier pregunta relacionada con la salud, consulte a un profesional de la salud calificado antes de usar.",
+    "Dutch":   "Ik kan geen medisch advies geven of gezondheidsclaims maken over Forever Living-producten. Raadpleeg voor gezondheidsgerelateerde vragen een gekwalificeerde zorgverlener voordat u het product gebruikt.",
+    "Swedish": "Jag kan inte ge medicinsk rådgivning eller göra hälsopåståenden om Forever Living-produkter. Vid hälsorelaterade frågor, konsultera en kvalificerad sjukvårdspersonal innan användning."
+  },
+
+  "income_opportunity": {
+    "English": "I'm not able to make specific income or earnings claims. Individual results vary and are not guaranteed. For information about the Forever Living compensation plan, please refer to your official FBO materials or speak with your sponsor.",
+    "Italian": "Non posso fare affermazioni specifiche su reddito o guadagni. I risultati individuali variano e non sono garantiti. Per informazioni sul piano compensi Forever Living, consulta i tuoi materiali ufficiali FBO o parla con il tuo sponsor.",
+    "German":  "Ich kann keine spezifischen Einkommens- oder Verdienstaussagen machen. Individuelle Ergebnisse können variieren und sind nicht garantiert. Informationen zum Vergütungsplan finden Sie in Ihren offiziellen FBO-Unterlagen.",
+    "French":  "Je ne peux pas faire de déclarations spécifiques concernant les revenus ou les gains. Les résultats individuels varient et ne sont pas garantis. Pour des informations sur le plan de rémunération, veuillez consulter vos documents officiels FBO.",
+    "Spanish": "No puedo hacer afirmaciones específicas sobre ingresos o ganancias. Los resultados individuales varían y no están garantizados. Para información sobre el plan de compensación, consulte sus materiales oficiales de FBO o hable con su patrocinador.",
+    "Dutch":   "Ik kan geen specifieke claims maken over inkomen of verdiensten. Individuele resultaten variëren en zijn niet gegarandeerd. Raadpleeg voor informatie over het compensatieplan uw officiële FBO-materialen of spreek met uw sponsor.",
+    "Swedish": "Jag kan inte göra specifika påståenden om inkomst eller intjäning. Individuella resultat varierar och är inte garanterade. För information om kompensationsplanen, se ditt officiella FBO-material eller tala med din sponsor."
+  },
+
+  "medical_claim": {
+    "English": "Forever Living products have not been evaluated by the FDA or other regulatory authorities to diagnose, treat, cure, or prevent any disease or medical condition. Please consult a qualified healthcare professional for medical guidance.",
+    "Italian": "I prodotti Forever Living non sono stati valutati dall'FDA o da altre autorità di regolamentazione per diagnosticare, trattare, curare o prevenire malattie. Consulta un professionista sanitario qualificato per una guida medica.",
+    "German":  "Forever Living-Produkte wurden weder von der FDA noch von anderen Regulierungsbehörden bewertet, um Krankheiten zu diagnostizieren, behandeln, heilen oder vorzubeugen. Bitte wenden Sie sich für medizinische Beratung an einen qualifizierten Arzt.",
+    "French":  "Les produits Forever Living n'ont pas été évalués par la FDA ou d'autres autorités réglementaires pour diagnostiquer, traiter, guérir ou prévenir des maladies. Veuillez consulter un professionnel de santé qualifié pour tout avis médical.",
+    "Spanish": "Los productos Forever Living no han sido evaluados por la FDA ni por otras autoridades reguladoras para diagnosticar, tratar, curar o prevenir enfermedades. Consulte a un profesional de la salud calificado para orientación médica.",
+    "Dutch":   "Forever Living-producten zijn niet beoordeeld door de FDA of andere regelgevende instanties om ziekten te diagnosticeren, behandelen, genezen of voorkomen. Raadpleeg een gekwalificeerde zorgverlener voor medisch advies.",
+    "Swedish": "Forever Living-produkter har inte utvärderats av FDA eller andra tillsynsmyndigheter för att diagnostisera, behandla, bota eller förebygga sjukdomar. Konsultera en kvalificerad sjukvårdspersonal för medicinsk vägledning."
+  }
+}

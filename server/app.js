@@ -1,50 +1,39 @@
+// app.js
 import "dotenv/config";
-import { pathToFileURL } from "node:url";
 import express from "express";
-import cors from "cors";
-import assetRoutes from "./routes/assetRoutes.js";
-import chatRoutes from "./routes/chatRoutes.js";
-import adminRoutes from "./routes/adminRoutes.js";
-import escalationRoutes from "./routes/escalationRoutes.js";
-import { allowedFrontendOrigins, port } from "./config/constants.js";
+import cors    from "cors";
+import { chatRouter }  from "./routes/chat.js";
+import { adminRouter } from "./routes/admin.js";
 
-const app = express();
+// ── Pre-warm all S3 config caches at startup ───────────────────────────────
+// This ensures the first real user request is never slow
+import { loadCountryConfig }   from "./services/bedrockService.js";
+import { reloadI18nContent }   from "./services/languageService.js";
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedFrontendOrigins.has(origin)) {
-        callback(null, true);
-        return;
-      }
+const app  = express();
+const port = process.env.PORT || 3001;
 
-      callback(new Error(`CORS blocked origin: ${origin}`));
-    },
-  }),
-);
-
-app.use((_req, res, next) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  next();
-});
+// ── Middleware ─────────────────────────────────────────────────────────────
+app.use(cors());
 app.use(express.json());
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
+// ── Routes ─────────────────────────────────────────────────────────────────
+app.use("/api/chat",  chatRouter);
+app.use("/api/admin", adminRouter);
+
+// ── Start server ───────────────────────────────────────────────────────────
+app.listen(port, async () => {
+  console.log(`ASK Vera V2 running on port ${port}`);
+
+  // Pre-warm caches — runs in background, won't block the server
+  try {
+    await Promise.all([
+      loadCountryConfig(),
+      reloadI18nContent(),
+    ]);
+    console.log("All config caches warmed successfully");
+  } catch (err) {
+    // Non-fatal — services will load lazily on first request
+    console.warn("Config pre-warm warning (non-fatal):", err.message);
+  }
 });
-
-app.use("/api/assets", assetRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/escalations", escalationRoutes);
-
-export const startServer = () => app.listen(port, () => {
-  console.log(`Chat API running on http://localhost:${port}`);
-});
-
-if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
-  startServer();
-}
-
-export default app;
-export { app };

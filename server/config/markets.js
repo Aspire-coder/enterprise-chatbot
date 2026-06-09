@@ -32,10 +32,68 @@ const countryMarketCodeMap = {
   Mexico: "MX",
   "South Africa": "ZA",
 };
+const countryLanguageCodeMap = {
+  "United Kingdom": {
+    default: "en",
+  },
+  Germany: {
+    default: "de",
+  },
+  Belgium: {
+    default: "fr",
+  },
+  Canada: {
+    default: "en",
+  },
+  France: {
+    default: "fr",
+  },
+  Italy: {
+    default: "it",
+  },
+  Netherlands: {
+    default: "nl",
+  },
+  Sweden: {
+    default: "sv",
+  },
+};
+const countryLanguageLocaleMap = countryLanguageCodeMap;
+const languageCodeMap = {
+  Dutch: "nl",
+  English: "en",
+  French: "fr",
+  German: "de",
+  Italian: "it",
+  Japanese: "ja",
+  Polish: "pl",
+  Serbian: "sr",
+  Spanish: "es",
+  Swedish: "sv",
+};
 const getMarketMetadataValue = (selectedCountry = defaultMarket) =>
   process.env[`BEDROCK_MARKET_METADATA_${toMarketEnvKey(selectedCountry)}`] ||
   countryMarketCodeMap[selectedCountry] ||
   toMarketEnvKey(selectedCountry);
+const getCountryCode = (selectedCountry = defaultMarket) =>
+  countryMarketCodeMap[selectedCountry] || toMarketEnvKey(selectedCountry);
+const getSelectedLanguageCode = ({
+  selectedCountry = defaultMarket,
+  selectedLanguage = "",
+  responseLanguage = "",
+} = {}) => {
+  const marketLanguages = countryLanguageCodeMap[selectedCountry] || {};
+
+  return (
+    marketLanguages.default ||
+    marketLanguages[selectedLanguage] ||
+    marketLanguages[responseLanguage] ||
+    languageCodeMap[selectedLanguage] ||
+    languageCodeMap[responseLanguage] ||
+    null
+  );
+};
+const getSelectedLocale = getSelectedLanguageCode;
 const countryMarketMetadataMap = {
   "United Kingdom": {
     marketValues: ["UK", "United Kingdom", "GB", "GBR", "UK-EN"],
@@ -85,6 +143,11 @@ export {
   defaultMarket,
   countryMarketCodeMap,
   countryMarketMetadataMap,
+  countryLanguageCodeMap,
+  countryLanguageLocaleMap,
+  getCountryCode,
   toMarketEnvKey,
   getMarketMetadataValue,
+  getSelectedLanguageCode,
+  getSelectedLocale,
 };
